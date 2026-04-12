@@ -2334,6 +2334,158 @@ resolve_showdown <- function(tournament_state) {
 }
 
 
+
+# =========================
+# Bot-input helpers
+# =========================
+
+build_bot_input <- function(tournament_state) {
+  if (!inherits(tournament_state, "tournament_state")) {
+    stop("`tournament_state` must inherit from 'tournament_state'.")
+  }
+
+  hand_state <- tournament_state$current_hand
+  if (is.null(hand_state) || !inherits(hand_state, "hand_state")) {
+    stop("No valid current hand found.")
+  }
+
+  legal <- get_legal_actions(tournament_state)
+  acting_seat <- hand_state$acting_seat
+  acting_idx <- get_player_index_by_seat(tournament_state$players, acting_seat)
+  player <- tournament_state$players[[acting_idx]]
+
+  list(
+    player_id = player$player_id,
+    player_name = player$name,
+    seat = player$seat,
+    hole_cards = player$hole_cards,
+    board = hand_state$board,
+    street = hand_state$street,
+    pot = hand_state$pot,
+    current_bet = hand_state$current_bet,
+    committed_this_round = player$committed_this_round,
+    committed_this_hand = player$committed_this_hand,
+    stack = player$stack,
+    small_blind = tournament_state$small_blind,
+    big_blind = tournament_state$big_blind,
+    ante = tournament_state$ante,
+    legal_actions = legal,
+    public_players = lapply(tournament_state$players, function(p) {
+      list(
+        player_id = p$player_id,
+        player_name = p$name,
+        seat = p$seat,
+        stack = p$stack,
+        status = p$status,
+        folded = p$folded,
+        all_in = p$all_in,
+        committed_this_round = p$committed_this_round,
+        committed_this_hand = p$committed_this_hand
+      )
+    }),
+    action_history = hand_state$action_history
+  )
+}
+
+bot_input_to_dataframe <- function(bot_input) {
+  if (!is.list(bot_input)) {
+    stop("`bot_input` must be a list.")
+  }
+
+  legal_types <- NA_character_
+  if (!is.null(bot_input$legal_actions$legal_action_types)) {
+    legal_types <- paste(bot_input$legal_actions$legal_action_types, collapse = ", ")
+  }
+
+  bet_min <- NA_real_
+  bet_max <- NA_real_
+  raise_min <- NA_real_
+  raise_max <- NA_real_
+
+  if (!is.null(bot_input$legal_actions$actions$bet)) {
+    bet_min <- bot_input$legal_actions$actions$bet$min_amount
+    bet_max <- bot_input$legal_actions$actions$bet$max_amount
+  }
+
+  if (!is.null(bot_input$legal_actions$actions$raise)) {
+    raise_min <- bot_input$legal_actions$actions$raise$min_amount
+    raise_max <- bot_input$legal_actions$actions$raise$max_amount
+  }
+
+  public_summary <- paste(
+    vapply(bot_input$public_players, function(p) {
+      paste0(
+        p$player_name,
+        "[seat=", p$seat,
+        ",stack=", p$stack,
+        ",status=", p$status,
+        ",folded=", p$folded,
+        ",all_in=", p$all_in,
+        ",ctr=", p$committed_this_round,
+        ",cth=", p$committed_this_hand,
+        "]"
+      )
+    }, character(1)),
+    collapse = " | "
+  )
+
+  action_history_summary <- if (length(bot_input$action_history) == 0) {
+    ""
+  } else {
+    paste(
+      vapply(bot_input$action_history, function(a) {
+        type_val <- if (!is.null(a$type)) as.character(a$type) else "NA"
+        seat_val <- if (!is.null(a$seat)) as.character(a$seat) else "NA"
+        amount_val <- if (!is.null(a$amount)) as.character(a$amount) else "NA"
+        paste0("type=", type_val, ";seat=", seat_val, ";amount=", amount_val)
+      }, character(1)),
+      collapse = " | "
+    )
+  }
+
+  data.frame(
+    player_id = bot_input$player_id,
+    player_name = bot_input$player_name,
+    seat = bot_input$seat,
+    hole_cards = paste(bot_input$hole_cards, collapse = ", "),
+    board = paste(bot_input$board, collapse = ", "),
+    street = bot_input$street,
+    pot = bot_input$pot,
+    current_bet = bot_input$current_bet,
+    committed_this_round = bot_input$committed_this_round,
+    committed_this_hand = bot_input$committed_this_hand,
+    stack = bot_input$stack,
+    small_blind = bot_input$small_blind,
+    big_blind = bot_input$big_blind,
+    ante = bot_input$ante,
+    legal_action_types = legal_types,
+    bet_min = bet_min,
+    bet_max = bet_max,
+    raise_min = raise_min,
+    raise_max = raise_max,
+    public_players = public_summary,
+    action_history = action_history_summary,
+    stringsAsFactors = FALSE
+  )
+}
+
+demo_show_bot_input <- function(tournament_state, as_dataframe = TRUE) {
+  if (!inherits(tournament_state, "tournament_state")) {
+    stop("`tournament_state` must inherit from 'tournament_state'.")
+  }
+
+  bot_input <- build_bot_input(tournament_state)
+
+  if (isTRUE(as_dataframe)) {
+    out <- bot_input_to_dataframe(bot_input)
+    print(out)
+    return(invisible(out))
+  }
+
+  print(bot_input)
+  invisible(bot_input)
+}
+
 # =========================
 # Safe bot action helper
 # =========================
@@ -2365,37 +2517,7 @@ safe_get_bot_action <- function(tournament_state) {
     return(list(type = "fold"))
   }
 
-  bot_input <- list(
-    player_id = player$player_id,
-    player_name = player$name,
-    seat = player$seat,
-    hole_cards = player$hole_cards,
-    board = hand_state$board,
-    street = hand_state$street,
-    pot = hand_state$pot,
-    current_bet = hand_state$current_bet,
-    committed_this_round = player$committed_this_round,
-    committed_this_hand = player$committed_this_hand,
-    stack = player$stack,
-    small_blind = tournament_state$small_blind,
-    big_blind = tournament_state$big_blind,
-    ante = tournament_state$ante,
-    legal_actions = legal,
-    public_players = lapply(tournament_state$players, function(p) {
-      list(
-        player_id = p$player_id,
-        player_name = p$name,
-        seat = p$seat,
-        stack = p$stack,
-        status = p$status,
-        folded = p$folded,
-        all_in = p$all_in,
-        committed_this_round = p$committed_this_round,
-        committed_this_hand = p$committed_this_hand
-      )
-    }),
-    action_history = hand_state$action_history
-  )
+  bot_input <- build_bot_input(tournament_state)
 
   bot_action <- tryCatch(
     player$bot_fn(bot_input),
