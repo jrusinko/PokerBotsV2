@@ -32,10 +32,6 @@ pot_odds <- function(call_amount, pot_before_call) {
   call_amount / denom
 }
 
-break_even_equity_call <- function(call_amount, pot_before_call) {
-  pot_odds(call_amount, pot_before_call)
-}
-
 pot_odds_as_fraction <- function(call_amount, pot_before_call) {
   x <- pot_odds(call_amount, pot_before_call)
   c(numerator = call_amount, denominator = pot_before_call + call_amount, value = x)
@@ -59,7 +55,17 @@ ev_binary <- function(p_success, gain_if_success, loss_if_fail = 0) {
   p_success * gain_if_success + (1 - p_success) * loss_if_fail
 }
 
-ev_call <- function(win_prob, pot_before_call, call_amount) {
+ev_call <- function(win_prob = NULL, pot_before_call, call_amount, equity = NULL) {
+  if (!is.null(win_prob) && !is.null(equity)) {
+    stop("Specify only one of win_prob or equity.")
+  }
+  if (is.null(win_prob)) {
+    if (is.null(equity)) {
+      stop("Either win_prob or equity must be provided.")
+    }
+    win_prob <- equity
+  }
+
   assert_scalar_numeric(win_prob, "win_prob", nonneg = TRUE)
   if (win_prob > 1) stop("win_prob must be at most 1.")
   assert_scalar_numeric(pot_before_call, "pot_before_call", nonneg = TRUE)
@@ -163,7 +169,7 @@ spr <- function(effective_stack_amt, pot) {
 }
 
 report_call_threshold <- function(call_amount, pot_before_call, digits = 1) {
-  be <- break_even_equity_call(call_amount, pot_before_call)
+  be <- pot_odds(call_amount, pot_before_call)
   cat("Break-even equity to call:", pct(be, digits), "\n")
   invisible(be)
 }

@@ -14,50 +14,9 @@
 # OPTIONAL HELPERS
 ############################################################
 
-bot_has_action <- function(bot_input, action_type) {
-  action_type %in% bot_input$legal_actions$legal_action_types
-}
-
-bot_min_bet <- function(bot_input) {
-  if (!bot_has_action(bot_input, "bet")) return(NULL)
-  bot_input$legal_actions$actions$bet$min_amount
-}
-
-bot_max_bet <- function(bot_input) {
-  if (!bot_has_action(bot_input, "bet")) return(NULL)
-  bot_input$legal_actions$actions$bet$max_amount
-}
-
-bot_min_raise <- function(bot_input) {
-  if (!bot_has_action(bot_input, "raise")) return(NULL)
-  bot_input$legal_actions$actions$raise$min_amount
-}
-
-bot_max_raise <- function(bot_input) {
-  if (!bot_has_action(bot_input, "raise")) return(NULL)
-  bot_input$legal_actions$actions$raise$max_amount
-}
-
-choose_preferred_action <- function(bot_input, preferences = c("check", "call", "fold")) {
-  legal_types <- bot_input$legal_actions$legal_action_types
-
-  for (a in preferences) {
-    if (a %in% legal_types) {
-      if (a == "bet") {
-        return(list(type = "bet", amount = bot_min_bet(bot_input)))
-      }
-      if (a == "raise") {
-        return(list(type = "raise", amount = bot_min_raise(bot_input)))
-      }
-      if (a == "all_in") {
-        return(list(type = "all_in"))
-      }
-      return(list(type = a))
-    }
-  }
-
-  stop("No preferred legal action found.")
-}
+## Bot helpers are provided by `bot_api.R` (canonical location).
+## Students and example bots can use `bot_has_action()`, `bot_min_bet()`,
+## `bot_min_raise()`, and `choose_preferred_action()` from there.
 
 
 ############################################################
@@ -151,12 +110,12 @@ my_bot_name <- function(bot_input) {
 #
 # Example usage:
 #
-# bot_input_example <- build_bot_input(tourn)
-# str(bot_input_example)
-# print(bot_input_example)
+ bot_input_example <- build_bot_input(tourn)
+ str(bot_input_example)
+ print(bot_input_example)
 #
-# Then try:
-# my_bot_name(bot_input_example)
+# Then try:#
+ my_bot_name(bot_input_example)
 #
 
 
@@ -166,43 +125,30 @@ my_bot_name <- function(bot_input) {
 #
 # Example usage:
 #
-# bot_input_example <- build_bot_input(tourn)
-# bot_input_df <- bot_input_to_dataframe(bot_input_example)
-# print(bot_input_df)
+ bot_input_example <- build_bot_input(tourn)
+ bot_input_df <- bot_input_to_dataframe(bot_input_example)
+ print(bot_input_df)
 #
 
-
-# ----------------------------------------------------------
-# TEST 3: Use the demo helper directly
-# ----------------------------------------------------------
-#
-# Example usage:
-#
-# demo_show_bot_input(tourn)
-#
-# or for the raw nested list:
-#
-# demo_show_bot_input(tourn, as_dataframe = FALSE)
-#
 
 
 # ----------------------------------------------------------
-# TEST 4: Explore individual pieces of bot_input
+# TEST 3: Explore individual pieces of bot_input
 # ----------------------------------------------------------
 #
 # Example usage:
 #
-# bot_input_example <- build_bot_input(tourn)
+ bot_input_example <- build_bot_input(tourn)
 #
-# bot_input_example$hole_cards
-# bot_input_example$board
-# bot_input_example$street
-# bot_input_example$pot
-# bot_input_example$stack
-# bot_input_example$legal_actions$legal_action_types
-# bot_input_example$legal_actions$actions
-# bot_input_example$public_players
-# bot_input_example$action_history
+ bot_input_example$hole_cards
+ bot_input_example$board
+ bot_input_example$street
+ bot_input_example$pot
+ bot_input_example$stack
+ bot_input_example$legal_actions$legal_action_types
+bot_input_example$legal_actions$actions
+ bot_input_example$public_players
+ bot_input_example$action_history
 #
 
 

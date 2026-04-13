@@ -3,24 +3,25 @@
 # File: poker_load_all.R
 #
 # Purpose:
-#   Loads all core modules for the refactored platform.
+#   Loads the project modules from the reorganized folder structure.
 ############################################################
 poker_load_all <- function(include_demos = FALSE, verbose = TRUE) {
 
   required_files <- c(
-    "cards_and_hands.R",
-    "poker_math.R",
-    "equity_tools.R",
-    "quant_tools.R",
-    "bot_api.R",
-    "game_engine.R",
-    "example_bots.R",
-    "tournament_runner.R",
-    "viewer_app.R"
+    "core_internal/cards_and_hands.R",
+    "core_internal/OmahaCode.R",
+    "shared_helpers/poker_math.R",
+    "shared_helpers/equity_tools.R",
+    "shared_helpers/quant_tools.R",
+    "core_internal/bot_api.R",
+    "core_internal/game_engine.R",
+    "reference_bots/example_bots.R",
+    "core_internal/tournament_runner.R",
+    "core_internal/viewer_app.R"
   )
 
   # Optional demo file (NOT loaded by default)
-  demo_file <- "poker_demos.R"
+  demo_file <- "assignments_demos/poker_demos.R"
 
   # --- Check all required files exist BEFORE sourcing ---
   missing <- required_files[!file.exists(required_files)]

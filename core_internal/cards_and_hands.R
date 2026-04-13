@@ -228,41 +228,6 @@ holdem_hand_value <- function(hole_df, board_df) {
   best_hand_from_cards(cards)
 }
 
-omaha_hand_value <- function(hole_df, board_df) {
-  stopifnot(is.data.frame(hole_df), is.data.frame(board_df))
-  if (nrow(hole_df) != 4) stop("hole_df must have exactly 4 cards for Omaha.")
-  if (!(nrow(board_df) %in% c(3, 4, 5))) stop("board_df must have 3, 4, or 5 cards.")
-
-  all_cards <- rbind(hole_df, board_df)
-  ids <- paste0(all_cards$rank, all_cards$suit)
-  if (anyDuplicated(ids)) stop("Duplicate card detected in inputs.")
-
-  hole_pairs <- combn(nrow(hole_df), 2)
-  board_trips <- combn(nrow(board_df), 3)
-
-  best_score <- -Inf
-  best_hand <- NULL
-  best_hole <- NULL
-  best_board <- NULL
-
-  for (i in seq_len(ncol(hole_pairs))) {
-    h2 <- hole_df[hole_pairs[, i], , drop = FALSE]
-    for (j in seq_len(ncol(board_trips))) {
-      b3 <- board_df[board_trips[, j], , drop = FALSE]
-      h5 <- rbind(h2, b3)
-      sc <- hand_value_5(h5)
-      if (sc > best_score) {
-        best_score <- sc
-        best_hand <- h5
-        best_hole <- h2
-        best_board <- b3
-      }
-    }
-  }
-
-  list(score = best_score, best_hand = best_hand, best_hole = best_hole, best_board = best_board)
-}
-
 ############################################################
 # 3. FAST INTEGER-BASED HAND UTILITIES
 ############################################################
@@ -386,31 +351,6 @@ holdem_best_score_ids <- function(hole_ids, board_ids) {
   .best5_from_n_ids(ids)
 }
 
-omaha_best_score_ids <- function(hole_ids, board_ids) {
-  if (length(hole_ids) != 4) stop("Omaha hole_ids must have length 4.")
-  if (!(length(board_ids) %in% c(3, 4, 5))) stop("board_ids must have length 3, 4, or 5.")
-  ids <- c(hole_ids, board_ids)
-  if (anyDuplicated(ids)) stop("Duplicate card detected in Omaha input.")
-
-  h_idx <- combn(4, 2)
-  b_idx <- combn(length(board_ids), 3)
-  best_score <- -Inf
-  best_ids <- NULL
-
-  for (i in seq_len(ncol(h_idx))) {
-    for (j in seq_len(ncol(b_idx))) {
-      cand <- c(hole_ids[h_idx[, i]], board_ids[b_idx[, j]])
-      sc <- hand_value_5_ids(cand)
-      if (sc > best_score) {
-        best_score <- sc
-        best_ids <- cand
-      }
-    }
-  }
-
-  list(score = best_score, best_ids = best_ids)
-}
-
 ############################################################
 # 4. DEAL + SHOWDOWN HELPERS (NO BETTING ENGINE YET)
 ############################################################
@@ -496,4 +436,299 @@ print_holdem_hand <- function(showdown) {
 
   cat("\nWINNER(S): ", paste(showdown$winners, collapse = ", "), "\n", sep = "")
   invisible(showdown)
+}
+############################################################
+# Range string parser for Hold'em
+#
+# Supported examples:
+#   "44+, A2s+, K5s+, Q8s+, J9s+, T9s, A7o+, K9o+, QTo+, JTo+"
+#   "77-JJ, A5s-A2s, KQo-KTo"
+#
+# Output:
+#   a poker_range object created with new_range_holdem(...)
+############################################################
+
+.holdem_ranks <- c("A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2")
+.holdem_rank_to_value <- setNames(seq_along(.holdem_ranks), .holdem_ranks)
+.holdem_suits <- c("h", "d", "c", "s")
+
+rank_value <- function(r) {
+  vals <- c(
+    "2" = 2, "3" = 3, "4" = 4, "5" = 5, "6" = 6,
+    "7" = 7, "8" = 8, "9" = 9, "T" = 10,
+    "J" = 11, "Q" = 12, "K" = 13, "A" = 14
+  )
+  out <- unname(vals[as.character(r)])
+  if (any(is.na(out))) stop("Invalid rank detected.")
+  out
+}
+normalize_range_string <- function(x) {
+  x <- gsub("\\s+", "", x)
+  x <- gsub("::\\{\\}$", "", x)
+  x
+}
+
+rank_value <- function(r) {
+  vals <- c(
+    "2" = 2, "3" = 3, "4" = 4, "5" = 5, "6" = 6,
+    "7" = 7, "8" = 8, "9" = 9, "T" = 10,
+    "J" = 11, "Q" = 12, "K" = 13, "A" = 14
+  )
+  out <- unname(vals[as.character(r)])
+  if (any(is.na(out))) {
+    stop("Invalid rank detected.")
+  }
+  out
+}
+is_pair_token <- function(token) {
+  grepl("^[2-9TJQKA]{2}$", token)
+}
+
+is_nonpair_token <- function(token) {
+  grepl("^[2-9TJQKA][2-9TJQKA][so]$", token)
+}
+
+expand_pair_token <- function(token) {
+  plus <- grepl("\\+$", token)
+  base <- sub("\\+$", "", token)
+
+  if (!is_pair_token(base)) {
+    stop(sprintf("Invalid pair token: %s", token))
+  }
+
+  r1 <- substr(base, 1, 1)
+  r2 <- substr(base, 2, 2)
+
+  if (r1 != r2) {
+    stop(sprintf("Token %s is not a pair token.", token))
+  }
+
+  idx <- rank_value(r1)
+
+  if (!plus) {
+    return(base)
+  }
+
+  ranks_to_use <- .holdem_ranks[idx:length(.holdem_ranks)]
+  paste0(ranks_to_use, ranks_to_use)
+}
+
+expand_nonpair_token <- function(token) {
+  plus <- grepl("\\+$", token)
+  base <- sub("\\+$", "", token)
+
+  if (!is_nonpair_token(base)) {
+    stop(sprintf("Invalid non-pair token: %s", token))
+  }
+
+  r1 <- substr(base, 1, 1)
+  r2 <- substr(base, 2, 2)
+  suited_flag <- substr(base, 3, 3)
+
+  if (r1 == r2) {
+    stop(sprintf("Token %s should not use suited/offsuited notation for a pair.", token))
+  }
+
+  idx1 <- rank_value(r1)
+  idx2 <- rank_value(r2)
+
+  if (idx2 <= idx1) {
+    stop(sprintf("Token %s is not in canonical high-card form.", token))
+  }
+
+  if (!plus) {
+    return(base)
+  }
+
+  second_ranks <- .holdem_ranks[idx2:(idx1 - 1)]
+  paste0(r1, second_ranks, suited_flag)
+}
+
+expand_pair_dash_token <- function(left, right) {
+  if (!is_pair_token(left) || !is_pair_token(right)) {
+    stop(sprintf("Invalid dashed pair range: %s-%s", left, right))
+  }
+
+  r_left <- substr(left, 1, 1)
+  r_right <- substr(right, 1, 1)
+
+  idx_left <- rank_value(r_left)
+  idx_right <- rank_value(r_right)
+
+  lo <- min(idx_left, idx_right)
+  hi <- max(idx_left, idx_right)
+
+  ranks_to_use <- .holdem_ranks[lo:hi]
+  paste0(ranks_to_use, ranks_to_use)
+}
+
+expand_nonpair_dash_token <- function(left, right) {
+  if (!is_nonpair_token(left) || !is_nonpair_token(right)) {
+    stop(sprintf("Invalid dashed non-pair range: %s-%s", left, right))
+  }
+
+  r1_left <- substr(left, 1, 1)
+  r2_left <- substr(left, 2, 2)
+  t_left  <- substr(left, 3, 3)
+
+  r1_right <- substr(right, 1, 1)
+  r2_right <- substr(right, 2, 2)
+  t_right  <- substr(right, 3, 3)
+
+  if (r1_left != r1_right) {
+    stop(sprintf(
+      "Dashed non-pair ranges must keep the first rank fixed: %s-%s",
+      left, right
+    ))
+  }
+
+  if (t_left != t_right) {
+    stop(sprintf(
+      "Dashed non-pair ranges must keep suitedness fixed: %s-%s",
+      left, right
+    ))
+  }
+
+  idx1 <- rank_value(r1_left)
+  idx2_left <- rank_value(r2_left)
+  idx2_right <- rank_value(r2_right)
+
+  if (idx2_left <= idx1 || idx2_right <= idx1) {
+    stop(sprintf("Invalid dashed non-pair range: %s-%s", left, right))
+  }
+
+  lo <- min(idx2_left, idx2_right)
+  hi <- max(idx2_left, idx2_right)
+
+  second_ranks <- .holdem_ranks[lo:hi]
+  paste0(r1_left, second_ranks, t_left)
+}
+
+expand_dash_token <- function(token) {
+  parts <- strsplit(token, "-", fixed = TRUE)[[1]]
+
+  if (length(parts) != 2) {
+    stop(sprintf("Invalid dashed token: %s", token))
+  }
+
+  left <- parts[1]
+  right <- parts[2]
+
+  if (is_pair_token(left) && is_pair_token(right)) {
+    return(expand_pair_dash_token(left, right))
+  }
+
+  if (is_nonpair_token(left) && is_nonpair_token(right)) {
+    return(expand_nonpair_dash_token(left, right))
+  }
+
+  stop(sprintf("Unsupported dashed range format: %s", token))
+}
+
+expand_range_token <- function(token) {
+  if (token == "") return(character(0))
+
+  token <- toupper(token)
+  token <- gsub("S", "s", token)
+  token <- gsub("O", "o", token)
+
+  if (grepl("-", token, fixed = TRUE)) {
+    return(expand_dash_token(token))
+  }
+
+  if (grepl("^[2-9TJQKA]{2}\\+?$", token)) {
+    return(expand_pair_token(token))
+  }
+
+  if (grepl("^[2-9TJQKA][2-9TJQKA][so]\\+?$", token)) {
+    return(expand_nonpair_token(token))
+  }
+
+  stop(sprintf("Unsupported token format: %s", token))
+}
+
+expand_range_string_to_classes <- function(range_string) {
+  x <- normalize_range_string(range_string)
+  tokens <- unlist(strsplit(x, ",", fixed = TRUE), use.names = FALSE)
+  tokens <- tokens[tokens != ""]
+
+  hand_classes <- unlist(lapply(tokens, expand_range_token), use.names = FALSE)
+  unique(hand_classes)
+}
+
+hand_class_to_combos <- function(hand_class) {
+  hand_class <- toupper(hand_class)
+  hand_class <- gsub("S", "s", hand_class)
+  hand_class <- gsub("O", "o", hand_class)
+
+  if (grepl("^[2-9TJQKA]{2}$", hand_class)) {
+    r <- substr(hand_class, 1, 1)
+
+    combos <- list()
+    k <- 1
+    for (i in 1:3) {
+      for (j in (i + 1):4) {
+        combos[[k]] <- c(
+          paste0(r, .holdem_suits[i]),
+          paste0(r, .holdem_suits[j])
+        )
+        k <- k + 1
+      }
+    }
+    return(do.call(rbind, combos))
+  }
+
+  if (grepl("^[2-9TJQKA][2-9TJQKA][so]$", hand_class)) {
+    r1 <- substr(hand_class, 1, 1)
+    r2 <- substr(hand_class, 2, 2)
+    typ <- substr(hand_class, 3, 3)
+
+    combos <- list()
+    k <- 1
+
+    if (typ == "s") {
+      for (s in .holdem_suits) {
+        combos[[k]] <- c(paste0(r1, s), paste0(r2, s))
+        k <- k + 1
+      }
+    } else if (typ == "o") {
+      for (s1 in .holdem_suits) {
+        for (s2 in .holdem_suits) {
+          if (s1 != s2) {
+            combos[[k]] <- c(paste0(r1, s1), paste0(r2, s2))
+            k <- k + 1
+          }
+        }
+      }
+    } else {
+      stop(sprintf("Unexpected type in hand class: %s", hand_class))
+    }
+
+    return(do.call(rbind, combos))
+  }
+
+  stop(sprintf("Unsupported hand class: %s", hand_class))
+}
+
+range_string_to_combos_df <- function(range_string, weight = 1) {
+  classes <- expand_range_string_to_classes(range_string)
+
+  combo_rows <- lapply(classes, hand_class_to_combos)
+  combo_mat <- do.call(rbind, combo_rows)
+
+  out <- data.frame(
+    c1 = combo_mat[, 1],
+    c2 = combo_mat[, 2],
+    w = weight,
+    stringsAsFactors = FALSE
+  )
+
+  out <- unique(out)
+  rownames(out) <- NULL
+  out
+}
+
+new_range_holdem_from_string <- function(range_string, weight = 1) {
+  combos <- range_string_to_combos_df(range_string, weight = weight)
+  new_range_holdem(combos = combos)
 }

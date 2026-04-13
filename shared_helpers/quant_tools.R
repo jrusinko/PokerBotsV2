@@ -115,14 +115,6 @@ new_range_holdem <- function(combos_df, label = NULL, normalize = TRUE) {
   out
 }
 
-new_range_omaha <- function(combos_df, label = NULL, normalize = TRUE) {
-  needed <- c("c1", "c2", "c3", "c4", "w")
-  if (!all(needed %in% names(combos_df))) stop("Omaha range needs columns c1, c2, c3, c4, w.")
-  out <- list(game = "omaha", combos = combos_df, weights = combos_df$w, label = label)
-  class(out) <- "poker_range"
-  if (normalize) out <- range_normalize(out)
-  out
-}
 
 range_normalize <- function(range_obj) {
   s <- sum(range_obj$weights)

@@ -12,52 +12,9 @@
 
 # ----------------------------------------------------------
 # Helpers
+# (moved to `bot_api.R` to avoid duplication; `bot_api.R` provides the
+# canonical implementations `bot_has_action`, `bot_min_bet`, etc.)
 # ----------------------------------------------------------
-
-bot_has_action <- function(bot_input, action_type) {
-  action_type %in% bot_input$legal_actions$legal_action_types
-}
-
-bot_min_bet <- function(bot_input) {
-  if (!bot_has_action(bot_input, "bet")) return(NULL)
-  bot_input$legal_actions$actions$bet$min_amount
-}
-
-bot_max_bet <- function(bot_input) {
-  if (!bot_has_action(bot_input, "bet")) return(NULL)
-  bot_input$legal_actions$actions$bet$max_amount
-}
-
-bot_min_raise <- function(bot_input) {
-  if (!bot_has_action(bot_input, "raise")) return(NULL)
-  bot_input$legal_actions$actions$raise$min_amount
-}
-
-bot_max_raise <- function(bot_input) {
-  if (!bot_has_action(bot_input, "raise")) return(NULL)
-  bot_input$legal_actions$actions$raise$max_amount
-}
-
-choose_preferred_action <- function(bot_input, preferences = c("check", "call", "fold")) {
-  legal_types <- bot_input$legal_actions$legal_action_types
-
-  for (a in preferences) {
-    if (a %in% legal_types) {
-      if (a == "bet") {
-        return(list(type = "bet", amount = bot_min_bet(bot_input)))
-      }
-      if (a == "raise") {
-        return(list(type = "raise", amount = bot_min_raise(bot_input)))
-      }
-      if (a == "all_in") {
-        return(list(type = "all_in"))
-      }
-      return(list(type = a))
-    }
-  }
-
-  stop("No preferred legal action found.")
-}
 
 hole_rank_values <- function(hole_cards) {
   if (is.null(hole_cards) || length(hole_cards) == 0) return(numeric(0))
