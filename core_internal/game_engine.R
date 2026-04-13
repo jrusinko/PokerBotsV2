@@ -8,6 +8,12 @@
 #   demonstration routines. Many functions are intentionally left as
 #   placeholders for the next development phase.
 ############################################################
+
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
+}
+
+
 new_player_state <- function(
     player_id,
     name = player_id,
@@ -2744,3 +2750,86 @@ resolve_showdown <- local({
     old_resolve_showdown(tournament_state)
   }
 })
+############################################################
+# Mathematics of Poker — Replay Logging Helpers
+# Suggested location: game_engine.R
+############################################################
+
+capture_hand_snapshot <- function(tournament_state,
+                                  message = NULL,
+                                  snapshot_type = "state",
+                                  include_hole_cards = TRUE) {
+  if (!inherits(tournament_state, "tournament_state")) {
+    stop("`tournament_state` must inherit from 'tournament_state'.")
+  }
+
+  hand_state <- tournament_state$current_hand
+  if (is.null(hand_state) || !inherits(hand_state, "hand_state")) {
+    stop("No valid current hand found in `tournament_state$current_hand`.")
+  }
+
+  players <- tournament_state$players
+  if (is.null(players) || !is.list(players)) {
+    stop("`tournament_state$players` must be a list.")
+  }
+
+  # Snapshot the player information needed for replay.
+  player_snapshots <- lapply(players, function(p) {
+    list(
+      player_id = p$player_id %||% NA_character_,
+      name = p$name %||% p$player_id %||% NA_character_,
+      seat = p$seat %||% NA_integer_,
+      stack = p$stack %||% NA_real_,
+      folded = isTRUE(p$folded),
+      all_in = isTRUE(p$all_in),
+      eliminated = isTRUE(p$eliminated),
+      status = p$status %||% NA_character_,
+      committed_this_round = p$committed_this_round %||% 0,
+      committed_this_hand = p$committed_this_hand %||% 0,
+      hole_cards = if (isTRUE(include_hole_cards)) {
+        p$hole_cards %||% character(0)
+      } else {
+        character(0)
+      }
+    )
+  })
+
+  # Try to identify the next acting player name for convenience in the viewer.
+  acting_seat <- hand_state$acting_seat %||% NA_integer_
+  acting_player_name <- NA_character_
+  if (!is.na(acting_seat)) {
+    acting_match <- vapply(
+      player_snapshots,
+      function(p) identical(p$seat, acting_seat),
+      logical(1)
+    )
+    if (any(acting_match)) {
+      acting_player_name <- player_snapshots[[which(acting_match)[1]]]$name
+    }
+  }
+
+  # Use existing action history length as a natural step counter when available.
+  action_count <- length(hand_state$action_history %||% list())
+
+  snapshot <- list(
+    step = action_count,
+    snapshot_type = snapshot_type,
+    message = message %||% "",
+    hand_id = hand_state$hand_id %||% NA_character_,
+    hand_number = hand_state$hand_number %||% NA_integer_,
+    street = hand_state$street %||% NA_character_,
+    pot = hand_state$pot %||% 0,
+    current_bet = hand_state$current_bet %||% 0,
+    min_raise_to = hand_state$min_raise_to %||% NA_real_,
+    acting_seat = acting_seat,
+    acting_player_name = acting_player_name,
+    button_seat = hand_state$button_seat %||% NA_integer_,
+    small_blind_seat = hand_state$small_blind_seat %||% NA_integer_,
+    big_blind_seat = hand_state$big_blind_seat %||% NA_integer_,
+    board = hand_state$board %||% character(0),
+    action_count = action_count,
+    players = player_snapshots
+  )
+
+  snapshot
+}
