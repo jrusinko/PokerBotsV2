@@ -1,4 +1,11 @@
-.Rproj.user
+# R / RStudio local project state
+.Rproj.user/
+**/.Rproj.user/
 .Rhistory
+**/.Rhistory
+.Rapp.history
+**/.Rapp.history
 .RData
+**/.RData
 .Ruserdata
+**/.Ruserdata
