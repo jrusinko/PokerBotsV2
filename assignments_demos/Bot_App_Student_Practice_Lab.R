@@ -205,12 +205,12 @@ holdem_equity_mc_fast(
 
 holdem_equity_mc_fast(
   hole_list = list(hole_1, hole_2),
-  n_sims = 1000
+  n_sims = 500
 )
 
 holdem_equity_mc_fast(
   hole_list = list(hole_1, hole_2),
-  n_sims = 50000
+  n_sims = 1000
 )
 
 # Write your response here:
@@ -232,7 +232,7 @@ board_df <- data.frame(
 holdem_equity_mc_fast(
   hole_list = list(hole_1, hole_2),
   board_df = board_df,
-  n_sims = 5000
+  n_sims = 500
 )
 
 # Task 5
@@ -333,7 +333,7 @@ loose_range$combos
 # Optional place to test range-vs-range equity.
 # Replace these with your own ranges once you build them.
 
-holdem_equity_mc_fast(list(tight_range, loose_range), n_sims = 1000)
+holdem_equity_mc_fast(list(tight_range, loose_range), n_sims = 500)
 
 # Write your response here:
 #
@@ -352,7 +352,7 @@ expand_range_string_to_classes("KQo-KTo")
 r1 <- new_range_holdem_from_string("77-JJ, A5s-A2s, KQo-KTo")
 r2 <- new_range_holdem_from_string("QQ+, AKs, AKo")
 
-holdem_equity_mc_fast(list(r1, r2), n_sims = 5000)
+holdem_equity_mc_fast(list(r1, r2), n_sims = 500)
 
 # Task 8
 # Create two additional range strings of your own and compare them. Hint you can use poker-tools
@@ -368,7 +368,7 @@ flop_board <- data.frame(
   stringsAsFactors = FALSE
 )
 
-holdem_equity_mc_fast(list(r1, r2), board_df = flop_board, n_sims = 5000)
+holdem_equity_mc_fast(list(r1, r2), board_df = flop_board, n_sims = 500)
 
 # Write your response here:
 #
@@ -690,7 +690,7 @@ demo_result <- run_tournament(
     "Passive Bot",
     "Aggro Bot"
   ),
-  starting_stack = 5000,
+  starting_stack = 2500,
   tournament_id = "LAB_BOT_DEMO",
   rng_seed = 123,
   max_hands = 200,

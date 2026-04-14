@@ -452,29 +452,14 @@ print_holdem_hand <- function(showdown) {
 .holdem_rank_to_value <- setNames(seq_along(.holdem_ranks), .holdem_ranks)
 .holdem_suits <- c("h", "d", "c", "s")
 
-rank_value <- function(r) {
-  vals <- c(
-    "2" = 2, "3" = 3, "4" = 4, "5" = 5, "6" = 6,
-    "7" = 7, "8" = 8, "9" = 9, "T" = 10,
-    "J" = 11, "Q" = 12, "K" = 13, "A" = 14
-  )
-  out <- unname(vals[as.character(r)])
-  if (any(is.na(out))) stop("Invalid rank detected.")
-  out
-}
 normalize_range_string <- function(x) {
   x <- gsub("\\s+", "", x)
   x <- gsub("::\\{\\}$", "", x)
   x
 }
 
-rank_value <- function(r) {
-  vals <- c(
-    "2" = 2, "3" = 3, "4" = 4, "5" = 5, "6" = 6,
-    "7" = 7, "8" = 8, "9" = 9, "T" = 10,
-    "J" = 11, "Q" = 12, "K" = 13, "A" = 14
-  )
-  out <- unname(vals[as.character(r)])
+holdem_rank_index <- function(r) {
+  out <- unname(.holdem_rank_to_value[as.character(r)])
   if (any(is.na(out))) {
     stop("Invalid rank detected.")
   }
@@ -503,13 +488,13 @@ expand_pair_token <- function(token) {
     stop(sprintf("Token %s is not a pair token.", token))
   }
 
-  idx <- rank_value(r1)
+  idx <- holdem_rank_index(r1)
 
   if (!plus) {
     return(base)
   }
 
-  ranks_to_use <- .holdem_ranks[idx:length(.holdem_ranks)]
+  ranks_to_use <- .holdem_ranks[1:idx]
   paste0(ranks_to_use, ranks_to_use)
 }
 
@@ -529,8 +514,8 @@ expand_nonpair_token <- function(token) {
     stop(sprintf("Token %s should not use suited/offsuited notation for a pair.", token))
   }
 
-  idx1 <- rank_value(r1)
-  idx2 <- rank_value(r2)
+  idx1 <- holdem_rank_index(r1)
+  idx2 <- holdem_rank_index(r2)
 
   if (idx2 <= idx1) {
     stop(sprintf("Token %s is not in canonical high-card form.", token))
@@ -540,7 +525,7 @@ expand_nonpair_token <- function(token) {
     return(base)
   }
 
-  second_ranks <- .holdem_ranks[idx2:(idx1 - 1)]
+  second_ranks <- .holdem_ranks[idx2:(idx1 + 1)]
   paste0(r1, second_ranks, suited_flag)
 }
 
@@ -552,8 +537,8 @@ expand_pair_dash_token <- function(left, right) {
   r_left <- substr(left, 1, 1)
   r_right <- substr(right, 1, 1)
 
-  idx_left <- rank_value(r_left)
-  idx_right <- rank_value(r_right)
+  idx_left <- holdem_rank_index(r_left)
+  idx_right <- holdem_rank_index(r_right)
 
   lo <- min(idx_left, idx_right)
   hi <- max(idx_left, idx_right)
@@ -589,9 +574,9 @@ expand_nonpair_dash_token <- function(left, right) {
     ))
   }
 
-  idx1 <- rank_value(r1_left)
-  idx2_left <- rank_value(r2_left)
-  idx2_right <- rank_value(r2_right)
+  idx1 <- holdem_rank_index(r1_left)
+  idx2_left <- holdem_rank_index(r2_left)
+  idx2_right <- holdem_rank_index(r2_right)
 
   if (idx2_left <= idx1 || idx2_right <= idx1) {
     stop(sprintf("Invalid dashed non-pair range: %s-%s", left, right))
