@@ -26,7 +26,7 @@ create_deck <- function() {
 shuffle_deck <- function(deck = create_deck()) {
   deck[sample(nrow(deck)), , drop = FALSE]
 }
-
+#
 deal_cards <- function(deck, n) {
   if (!is.data.frame(deck)) stop("deck must be a data.frame.")
   if (!is.numeric(n) || length(n) != 1 || is.na(n) || n < 0) {
