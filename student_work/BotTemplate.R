@@ -158,9 +158,9 @@ bot_input_example$legal_actions$actions
 #
 # Example usage:
 #
-# bot_input_example <- build_bot_input(tourn)
-# action <- my_bot_name(bot_input_example)
-# print(action)
+ bot_input_example <- build_bot_input(tourn)
+ action <- my_bot_name(bot_input_example)
+ print(action)
 #
 # Expected formats include:
 #   list(type = "fold")
