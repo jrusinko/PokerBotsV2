@@ -10,3 +10,5 @@
 .Ruserdata
 **/.Ruserdata
 /.Rproj.user
+*.pper
+/.Rproj.user
