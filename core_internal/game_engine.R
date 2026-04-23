@@ -485,17 +485,16 @@ initialize_hand <- function(tournament_state) {
   # -----------------------------------
   # Blind positions and first actor
   # -----------------------------------
-  # Standard table logic:
-  # - SB is next active seat after button
-  # - BB is next active seat after SB
-  # - First to act preflop is next active seat after BB
-  #
-  # Heads-up note:
-  # This same logic yields button = SB, next = BB, next = button for first action.
-  # That is correct for heads-up preflop.
-  small_blind_seat <- get_next_active_seat(players, button_seat)
-  big_blind_seat <- get_next_active_seat(players, small_blind_seat)
-  acting_seat <- get_next_active_seat(players, big_blind_seat)
+  if (length(active_seats) == 2L) {
+    # Heads-up: button posts the small blind and acts first preflop.
+    small_blind_seat <- button_seat
+    big_blind_seat <- get_next_active_seat(players, button_seat)
+    acting_seat <- small_blind_seat
+  } else {
+    small_blind_seat <- get_next_active_seat(players, button_seat)
+    big_blind_seat <- get_next_active_seat(players, small_blind_seat)
+    acting_seat <- get_next_active_seat(players, big_blind_seat)
+  }
 
   # -----------------------------------
   # Build and shuffle deck
@@ -865,6 +864,29 @@ post_blinds_and_antes <- function(tournament_state) {
 
   # min_bet also begins as the big blind size.
   hand_state$min_bet <- as.numeric(tournament_state$big_blind)
+
+  # Forced bets can make the scheduled first actor ineligible (for example,
+  # a heads-up small blind who is all-in after posting). If only one
+  # non-all-in player remains, there is no further betting action.
+  non_allin_live <- count_live_non_allin_players_in_hand(players)
+
+  if (non_allin_live <= 1) {
+    hand_state$acting_seat <- NA_integer_
+    hand_state$showdown_required <- TRUE
+  } else if (!is.na(hand_state$acting_seat)) {
+    acting_idx <- get_player_index_by_seat(players, hand_state$acting_seat)
+    acting_player <- players[[acting_idx]]
+
+    acting_player_can_act <-
+      identical(acting_player$status, "active") &&
+      !isTRUE(acting_player$folded) &&
+      !isTRUE(acting_player$all_in) &&
+      isTRUE(acting_player$stack > 0)
+
+    if (!acting_player_can_act) {
+      hand_state$acting_seat <- get_next_eligible_acting_seat(players, hand_state$acting_seat)
+    }
+  }
 
   # -----------------------------------
   # Update tournament state
@@ -1395,7 +1417,7 @@ apply_action <- function(tournament_state, action) {
   # If nobody can act anymore, hand is ready to move on.
   non_allin_live <- count_live_non_allin_players_in_hand(players)
 
-  if (non_allin_live == 0) {
+  if (non_allin_live <= 1) {
     hand_state <- tournament_state$current_hand
     hand_state$showdown_required <- TRUE
     hand_state$acting_seat <- NA_integer_
@@ -1531,7 +1553,7 @@ advance_street <- function(tournament_state) {
   ))
 
   # If nobody can still act, we can keep running board cards until showdown.
-  no_further_action <- (length(non_allin_live_players) == 0)
+  no_further_action <- (length(non_allin_live_players) <= 1)
 
   current_street <- as.character(hand_state$street)
 
@@ -2622,9 +2644,16 @@ initialize_hand <- function(tournament_state) {
   players <- reset_players_for_new_hand(players)
 
   button_seat <- if (is.na(tournament_state$button_seat)) active_seats[1] else get_next_active_seat(players, tournament_state$button_seat)
-  small_blind_seat <- get_next_active_seat(players, button_seat)
-  big_blind_seat <- get_next_active_seat(players, small_blind_seat)
-  acting_seat <- get_next_active_seat(players, big_blind_seat)
+
+  if (length(active_seats) == 2L) {
+    small_blind_seat <- button_seat
+    big_blind_seat <- get_next_active_seat(players, button_seat)
+    acting_seat <- small_blind_seat
+  } else {
+    small_blind_seat <- get_next_active_seat(players, button_seat)
+    big_blind_seat <- get_next_active_seat(players, small_blind_seat)
+    acting_seat <- get_next_active_seat(players, big_blind_seat)
+  }
 
   deck <- fresh_shuffled_card_labels()
 

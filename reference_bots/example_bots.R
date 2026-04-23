@@ -414,3 +414,86 @@ student_bot_template <- function(bot_input) {
 
   choose_preferred_action(bot_input, c("check", "call", "fold"))
 }
+
+lab_bot <- function(bot_input) {
+  legal_types <- bot_input$legal_actions$legal_action_types
+  hole_cards <- bot_input$hole_cards
+  street <- bot_input$street
+  big_blind <- bot_input$big_blind
+  pot <- bot_input$pot
+  current_bet <- bot_input$current_bet
+  committed <- bot_input$committed_this_round
+
+  call_amount <- max(0, current_bet - committed)
+  vals <- sort(hole_rank_values(hole_cards), decreasing = TRUE)
+
+  if (street == "preflop" && length(vals) == 2) {
+    paired <- vals[1] == vals[2]
+    ak <- identical(vals, c(14, 13))
+    aq <- identical(vals, c(14, 12))
+
+    if (paired || ak || aq) {
+      if (bot_has_action(bot_input, "raise")) {
+        return(list(type = "raise", amount = bot_min_raise(bot_input)))
+      }
+      if (bot_has_action(bot_input, "bet")) {
+        return(list(type = "bet", amount = bot_min_bet(bot_input)))
+      }
+    }
+
+    if ("check" %in% legal_types) {
+      return(list(type = "check"))
+    }
+
+    if ("call" %in% legal_types && call_amount <= big_blind) {
+      return(list(type = "call"))
+    }
+
+    return(list(type = "fold"))
+  }
+
+  if ("check" %in% legal_types) {
+    return(list(type = "check"))
+  }
+
+  if ("call" %in% legal_types) {
+    threshold <- pot_odds(call_amount, pot)
+    if (threshold <= 0.25) {
+      return(list(type = "call"))
+    }
+  }
+
+  list(type = "fold")
+}
+
+lab_bot_v2 <- function(bot_input) {
+  legal_types <- bot_input$legal_actions$legal_action_types
+  board <- bot_input$board
+  street <- bot_input$street
+  pot <- bot_input$pot
+  current_bet <- bot_input$current_bet
+  committed <- bot_input$committed_this_round
+  call_amount <- max(0, current_bet - committed)
+
+  if (street == "flop" && length(board) == 3) {
+    board_df <- parse_cards(board)
+    feats <- board_features(board_df)
+
+    if ("bet" %in% legal_types && !isTRUE(feats$two_tone) && feats$connectivity <= 1) {
+      return(list(type = "bet", amount = bot_min_bet(bot_input)))
+    }
+  }
+
+  if ("check" %in% legal_types) {
+    return(list(type = "check"))
+  }
+
+  if ("call" %in% legal_types) {
+    threshold <- pot_odds(call_amount, pot)
+    if (threshold <= 0.20) {
+      return(list(type = "call"))
+    }
+  }
+
+  list(type = "fold")
+}
