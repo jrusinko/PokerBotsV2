@@ -1414,17 +1414,6 @@ apply_action <- function(tournament_state, action) {
     return(mark_hand_winner_by_folds(tournament_state))
   }
 
-  # If nobody can act anymore, hand is ready to move on.
-  non_allin_live <- count_live_non_allin_players_in_hand(players)
-
-  if (non_allin_live <= 1) {
-    hand_state <- tournament_state$current_hand
-    hand_state$showdown_required <- TRUE
-    hand_state$acting_seat <- NA_integer_
-    tournament_state$current_hand <- validate_hand_state(hand_state)
-    return(validate_tournament_state(tournament_state))
-  }
-
   # -----------------------------------
   # Determine whether street action is complete
   # -----------------------------------
@@ -2286,11 +2275,24 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     stop("Cannot play a hand with fewer than 2 active players.")
   }
 
+  starting_stack_summary <- build_hand_stack_summary(tournament_state$players)
+  elimination_order_before_hand <- tournament_state$elimination_order %||% character(0)
+
   # -----------------------------------
   # Initialize and post forced bets
   # -----------------------------------
   tournament_state <- initialize_hand(tournament_state)
+  tournament_state <- append_hand_snapshot(
+    tournament_state,
+    message = "Hand initialized and hole cards dealt.",
+    snapshot_type = "hand_start"
+  )
   tournament_state <- post_blinds_and_antes(tournament_state)
+  tournament_state <- append_hand_snapshot(
+    tournament_state,
+    message = "Forced bets posted.",
+    snapshot_type = "forced_bets"
+  )
 
   action_counter <- 0L
 
@@ -2315,12 +2317,22 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     # If showdown is required, resolve it
     if (identical(hand_state$street, "showdown") || isTRUE(hand_state$showdown_required) && length(hand_state$board) == 5) {
       tournament_state <- resolve_showdown(tournament_state)
+      tournament_state <- append_hand_snapshot(
+        tournament_state,
+        message = "Showdown resolved.",
+        snapshot_type = "showdown"
+      )
       break
     }
 
     # If no acting seat, street is complete and should advance
     if (is.na(hand_state$acting_seat)) {
       tournament_state <- advance_street(tournament_state)
+      tournament_state <- append_hand_snapshot(
+        tournament_state,
+        message = build_street_snapshot_message(tournament_state$current_hand),
+        snapshot_type = "street"
+      )
       action_counter <- action_counter + 1L
       next
     }
@@ -2328,8 +2340,19 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     # Otherwise get bot action and apply it
     action <- safe_get_bot_action(tournament_state)
     tournament_state <- apply_action(tournament_state, action)
+    tournament_state <- append_hand_snapshot(
+      tournament_state,
+      message = build_last_action_snapshot_message(tournament_state$current_hand),
+      snapshot_type = "action"
+    )
     action_counter <- action_counter + 1L
   }
+
+  tournament_state <- append_hand_snapshot(
+    tournament_state,
+    message = "Hand complete.",
+    snapshot_type = "hand_end"
+  )
 
   # -----------------------------------
   # Build a simple hand summary
@@ -2337,29 +2360,38 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
   hand_state <- tournament_state$current_hand
   players <- tournament_state$players
 
-  stack_summary <- lapply(players, function(p) {
-    list(
-      player_id = p$player_id,
-      player_name = p$name,
-      seat = p$seat,
-      stack = p$stack,
-      status = p$status,
-      finishing_place = p$finishing_place
-    )
-  })
+  stack_summary <- build_hand_stack_summary(players)
+  eliminations_this_hand <- setdiff(
+    tournament_state$elimination_order %||% character(0),
+    elimination_order_before_hand
+  )
 
   hand_summary <- list(
     hand_id = hand_state$hand_id,
     hand_number = hand_state$hand_number,
+    level = tournament_state$level,
+    small_blind = tournament_state$small_blind,
+    big_blind = tournament_state$big_blind,
+    ante = tournament_state$ante,
     board = hand_state$board,
     button_seat = hand_state$button_seat,
     small_blind_seat = hand_state$small_blind_seat,
     big_blind_seat = hand_state$big_blind_seat,
     hand_over = hand_state$hand_over,
     final_street = hand_state$street,
+    pot = hand_state$pot,
+    side_pots = hand_state$side_pots %||% list(),
     action_count = length(hand_state$action_history),
     action_history = hand_state$action_history,
-    stack_summary = stack_summary
+    state_snapshots = hand_state$state_snapshots %||% list(),
+    starting_stack_summary = starting_stack_summary,
+    ending_stack_summary = stack_summary,
+    stack_summary = stack_summary,
+    stack_deltas = compute_stack_deltas(starting_stack_summary, stack_summary),
+    winners = extract_hand_winner_summary(hand_state$action_history),
+    showdown_summary = extract_showdown_summary(hand_state$action_history),
+    elimination_order_before_hand = elimination_order_before_hand,
+    eliminations_this_hand = eliminations_this_hand
   )
 
   tournament_state$hand_log[[length(tournament_state$hand_log) + 1L]] <- hand_summary
@@ -2861,4 +2893,164 @@ capture_hand_snapshot <- function(tournament_state,
   )
 
   snapshot
+}
+
+
+append_hand_snapshot <- function(tournament_state,
+                                 message = NULL,
+                                 snapshot_type = "state",
+                                 include_hole_cards = TRUE) {
+  if (!inherits(tournament_state, "tournament_state")) {
+    stop("`tournament_state` must inherit from 'tournament_state'.")
+  }
+
+  hand_state <- tournament_state$current_hand
+  if (is.null(hand_state) || !inherits(hand_state, "hand_state")) {
+    stop("No valid current hand found in `tournament_state$current_hand`.")
+  }
+
+  if (is.null(hand_state$state_snapshots)) {
+    hand_state$state_snapshots <- list()
+  }
+
+  snap <- capture_hand_snapshot(
+    tournament_state = tournament_state,
+    message = message,
+    snapshot_type = snapshot_type,
+    include_hole_cards = include_hole_cards
+  )
+
+  hand_state$state_snapshots[[length(hand_state$state_snapshots) + 1L]] <- snap
+  tournament_state$current_hand <- hand_state
+  tournament_state
+}
+
+
+build_hand_stack_summary <- function(players) {
+  lapply(players, function(p) {
+    list(
+      player_id = p$player_id,
+      player_name = p$name,
+      seat = p$seat,
+      stack = p$stack,
+      status = p$status,
+      finishing_place = p$finishing_place
+    )
+  })
+}
+
+
+compute_stack_deltas <- function(starting_stack_summary, ending_stack_summary) {
+  start_by_player <- setNames(
+    vapply(starting_stack_summary, function(p) as.numeric(p$stack %||% 0), numeric(1)),
+    vapply(starting_stack_summary, function(p) as.character(p$player_id %||% ""), character(1))
+  )
+
+  lapply(ending_stack_summary, function(p) {
+    player_id <- as.character(p$player_id %||% "")
+    ending_stack <- as.numeric(p$stack %||% 0)
+    starting_stack <- unname(start_by_player[player_id])
+    if (length(starting_stack) == 0 || is.na(starting_stack)) {
+      starting_stack <- ending_stack
+    }
+
+    list(
+      player_id = player_id,
+      player_name = p$player_name %||% p$name %||% player_id,
+      seat = p$seat %||% NA_integer_,
+      starting_stack = starting_stack,
+      ending_stack = ending_stack,
+      delta = ending_stack - starting_stack,
+      status = p$status %||% NA_character_
+    )
+  })
+}
+
+
+extract_hand_winner_summary <- function(action_history) {
+  if (!is.list(action_history) || length(action_history) == 0) {
+    return(list())
+  }
+
+  winners <- list()
+
+  for (a in action_history) {
+    if (identical(a$type, "win_by_folds")) {
+      winners[[length(winners) + 1L]] <- list(
+        win_type = "win_by_folds",
+        seat = a$winner_seat %||% NA_integer_,
+        player_id = a$winner_player_id %||% NA_character_,
+        amount = a$amount %||% NA_real_
+      )
+    }
+
+    if (identical(a$type, "showdown_pot_award")) {
+      winners[[length(winners) + 1L]] <- list(
+        win_type = "showdown_pot_award",
+        pot_index = a$pot_index %||% NA_integer_,
+        pot_amount = a$pot_amount %||% NA_real_,
+        winner_seats = a$winner_seats %||% integer(0),
+        payouts = a$payouts %||% numeric(0)
+      )
+    }
+  }
+
+  winners
+}
+
+
+extract_showdown_summary <- function(action_history) {
+  if (!is.list(action_history) || length(action_history) == 0) {
+    return(NULL)
+  }
+
+  reveal_idx <- which(vapply(action_history, function(a) identical(a$type, "showdown_reveal"), logical(1)))
+  if (length(reveal_idx) == 0) {
+    return(NULL)
+  }
+
+  reveal_action <- action_history[[reveal_idx[length(reveal_idx)]]]
+  list(
+    board = reveal_action$board %||% character(0),
+    hands = reveal_action$hands %||% list()
+  )
+}
+
+
+build_street_snapshot_message <- function(hand_state) {
+  if (is.null(hand_state) || !inherits(hand_state, "hand_state")) {
+    return("Street advanced.")
+  }
+
+  paste0(
+    "Advanced to ",
+    toupper(as.character(hand_state$street %||% "next street")),
+    "."
+  )
+}
+
+
+build_last_action_snapshot_message <- function(hand_state) {
+  if (is.null(hand_state) || !inherits(hand_state, "hand_state")) {
+    return("Action applied.")
+  }
+
+  ah <- hand_state$action_history %||% list()
+  if (length(ah) == 0) {
+    return("Action applied.")
+  }
+
+  a <- ah[[length(ah)]]
+  actor <- a$player_name %||% a$winner_player_id %||% paste0("Seat ", a$seat %||% a$winner_seat %||% "?")
+  action_type <- gsub("_", " ", as.character(a$type %||% "action"))
+
+  if (!is.null(a$winner_seat)) {
+    return(paste0(actor, " ", action_type, " for ", a$amount %||% 0, "."))
+  }
+
+  if (!is.null(a$amount) && is.numeric(a$amount) && !is.na(a$amount) && a$amount > 0) {
+    return(paste0(actor, " ", action_type, " ", a$amount, "."))
+  }
+
+  paste0(actor, " ", action_type, ".")
 }

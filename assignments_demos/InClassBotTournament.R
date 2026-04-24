@@ -474,6 +474,10 @@ demo_tournament_run <- function(
 
 
 
+source("poker_load_all.R")
+poker_load_all(include_demos = FALSE)
+
+source("assignments_demos/poker_demos.R")
 # Setup -------------------------------------------------------------------
 Botbots <- list(random_bot, aggressive_bot, simple_preflop_strength_bot, always_call_bot,strength_by_street_bot,passive_bot,mixed_bot,mixed_bot2,lab_bot,lab_bot_v2)
 Bot_names = c("Rando", "Aggro", "PrePlanner", "GetAlong","Da streets", "ScardyBot","Confused","MoreConfused","LabBot","LabBot2")
@@ -513,7 +517,8 @@ playerindexB<-setdiff(c(1,2,3,4,5,6,7,8,9,10),playerindexA)
 participantBots<-c(Botbots[botindexA],studentBots[playerindexA])
 participantNames<-c(Bot_names[botindexA],StudentNames[playerindexA])
 participantNames
-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000)
+tourn<-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000,verbose = FALSE)
+run_viewer_app(tourn)
 standings<-c(7,5,9,2,8,10,4,6,3,1)
 FinalTablebots<-participantBots[standings[1:3]]
 FinalTableNames<-participantNames[standings[1:3]]

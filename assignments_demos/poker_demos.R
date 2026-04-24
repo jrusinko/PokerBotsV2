@@ -4,18 +4,22 @@
 #
 # Purpose:
 #   Central home for manual demos, smoke tests, and example runs.
-#   This file is safe to source: nothing runs automatically.
+#   This file is safe to source: no demos or loaders run automatically.
 #   Call the functions below explicitly when you want test behavior.
 ############################################################
 
-# Ensure core modules are loaded
-if (!exists("poker_load_all")) {
-  source("poker_load_all.R")
+ensure_demo_dependencies_loaded <- function(verbose = FALSE) {
+  if (!exists("poker_load_all", mode = "function")) {
+    source("poker_load_all.R")
+  }
+
+  if (!exists("initialize_tournament", mode = "function")) {
+    poker_load_all(include_demos = FALSE, verbose = verbose)
+  }
 }
 
-poker_load_all()
-
 demo_cards_and_hands_holdem <- function(n_players = 2) {
+  ensure_demo_dependencies_loaded()
   showdown <- play_holdem_hand(n_players = n_players)
   print_holdem_hand(showdown)
   invisible(showdown)
@@ -23,6 +27,7 @@ demo_cards_and_hands_holdem <- function(n_players = 2) {
 
 
 demo_engine_hand_setup <- function() {
+  ensure_demo_dependencies_loaded()
   bot_fns <- list(
     "Random Bot 1" = random_bot,
     "Random Bot 2" = random_bot,
@@ -41,6 +46,7 @@ demo_engine_hand_setup <- function() {
 }
 
 demo_engine_single_hand <- function() {
+  ensure_demo_dependencies_loaded()
   bot_fns <- list(
     "Random Bot 1" = random_bot,
     "Random Bot 2" = random_bot,
@@ -57,6 +63,7 @@ demo_engine_single_hand <- function() {
 }
 
 demo_equity_holdem <- function(n_sims = 5000) {
+  ensure_demo_dependencies_loaded()
   hole_list <- list(
     data.frame(rank = c("A", "A"), suit = c("h", "s"), card = c("Ah", "As"), stringsAsFactors = FALSE),
     data.frame(rank = c("K", "K"), suit = c("h", "s"), card = c("Kh", "Ks"), stringsAsFactors = FALSE)
@@ -156,6 +163,7 @@ demo_engine_single_hand_verbose <- function(
     pause_mode = c("none", "street", "action"),
     tournament_state = NULL
 ) {
+  ensure_demo_dependencies_loaded()
   pause_mode <- match.arg(pause_mode)
 
   if (is.null(tournament_state)) {
@@ -337,6 +345,7 @@ demo_tournament_run <- function(
     hand_pause_mode = c("none", "street", "action"),
     pause_between_hands = FALSE
 ) {
+  ensure_demo_dependencies_loaded()
   hand_pause_mode <- match.arg(hand_pause_mode)
 
   if (!is.na(rng_seed)) {

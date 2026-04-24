@@ -17,6 +17,7 @@ poker_load_all <- function(include_demos = FALSE, verbose = TRUE) {
     "core_internal/game_engine.R",
     "reference_bots/example_bots.R",
     "core_internal/tournament_runner.R",
+    "MadeForTV.R",
     "core_internal/viewer_app.R"
   )
 
