@@ -2179,7 +2179,31 @@ demo_show_bot_input <- function(tournament_state, as_dataframe = TRUE) {
 # Safe bot action helper
 # =========================
 
-safe_get_bot_action <- function(tournament_state) {
+passive_fallback_action <- function(legal) {
+  legal_types <- legal$legal_action_types %||% character(0)
+
+  if ("check" %in% legal_types) {
+    return(list(type = "check"))
+  }
+
+  list(type = "fold")
+}
+
+with_decision_clock <- function(expr, timeout_sec = 1.5) {
+  if (!is.numeric(timeout_sec) || length(timeout_sec) != 1 || is.na(timeout_sec) || timeout_sec <= 0) {
+    return(force(expr))
+  }
+
+  setTimeLimit(elapsed = as.numeric(timeout_sec), transient = TRUE)
+  on.exit(setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE), add = TRUE)
+
+  force(expr)
+}
+
+safe_get_bot_action <- function(
+    tournament_state,
+    decision_timeout_sec = getOption("pokerbots.decision_timeout_sec", 1.5)
+) {
   if (!inherits(tournament_state, "tournament_state")) {
     stop("`tournament_state` must inherit from 'tournament_state'.")
   }
@@ -2195,21 +2219,16 @@ safe_get_bot_action <- function(tournament_state) {
   player <- tournament_state$players[[acting_idx]]
 
   if (!is.function(player$bot_fn)) {
-    # Fallback policy if no bot function is present:
-    # check if possible, otherwise call if possible, otherwise fold.
-    if ("check" %in% legal$legal_action_types) {
-      return(list(type = "check"))
-    }
-    if ("call" %in% legal$legal_action_types) {
-      return(list(type = "call"))
-    }
-    return(list(type = "fold"))
+    return(passive_fallback_action(legal))
   }
 
   bot_input <- build_bot_input(tournament_state)
 
   bot_action <- tryCatch(
-    player$bot_fn(bot_input),
+    with_decision_clock(
+      player$bot_fn(bot_input),
+      timeout_sec = decision_timeout_sec
+    ),
     error = function(e) {
       NULL
     }
@@ -2217,26 +2236,14 @@ safe_get_bot_action <- function(tournament_state) {
 
   # Defensive fallback if bot output is malformed
   if (!is.list(bot_action) || is.null(bot_action$type)) {
-    if ("check" %in% legal$legal_action_types) {
-      return(list(type = "check"))
-    }
-    if ("call" %in% legal$legal_action_types) {
-      return(list(type = "call"))
-    }
-    return(list(type = "fold"))
+    return(passive_fallback_action(legal))
   }
 
   action_type <- as.character(bot_action$type)[1]
 
   # Fallback if illegal type
   if (!(action_type %in% legal$legal_action_types)) {
-    if ("check" %in% legal$legal_action_types) {
-      return(list(type = "check"))
-    }
-    if ("call" %in% legal$legal_action_types) {
-      return(list(type = "call"))
-    }
-    return(list(type = "fold"))
+    return(passive_fallback_action(legal))
   }
 
   # Normalize numeric amounts for bet/raise if missing or malformed

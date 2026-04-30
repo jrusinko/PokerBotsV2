@@ -1434,18 +1434,36 @@ jp_make_villain_range <- function(hole_cards, board) {
   tryCatch(new_range_holdem(combos_df, label = "villain"), error = function(e) NULL)
 }
 
-jp_equity_estimate <- function(hole_cards, board, n_opponents = 1, n_sims = 700) {
+.jp_equity_cache <- new.env(hash = TRUE, parent = emptyenv())
+
+jp_equity_estimate <- function(hole_cards, board, n_opponents = 1, n_sims = 15) {
+  n_opp <- min(as.integer(n_opponents), 1L)
+  n_sims <- as.integer(n_sims)
+  cache_key <- paste(
+    c(
+      paste(sort(as.character(hole_cards)), collapse = "-"),
+      paste(as.character(board), collapse = "-"),
+      n_opp,
+      n_sims
+    ),
+    collapse = "|"
+  )
+
+  cached <- tryCatch(get(cache_key, envir = .jp_equity_cache), error = function(e) NULL)
+  if (!is.null(cached)) return(cached)
+
   tryCatch({
     our_df       <- data.frame(rank = extract_rank_from_label(hole_cards), suit = extract_suit_from_label(hole_cards), stringsAsFactors = FALSE)
     board_df     <- data.frame(rank = extract_rank_from_label(board),      suit = extract_suit_from_label(board),      stringsAsFactors = FALSE)
     villain_rng  <- jp_make_villain_range(hole_cards, board)
     if (is.null(villain_rng)) return(0.5)
 
-    n_opp     <- min(n_opponents, 4)
     hole_list <- c(list(our_df), replicate(n_opp, villain_rng, simplify = FALSE))
 
     result <- holdem_equity_mc_fast(hole_list, board_df, n_sims = n_sims)
-    result$equity[1]
+    eq <- result$equity[1]
+    assign(cache_key, eq, envir = .jp_equity_cache)
+    eq
   }, error = function(e) jp_equity(hole_cards, board))
 }
 
@@ -1614,8 +1632,6 @@ jaymon_bot <- function(bot_input) {
     return(choose_preferred_action(bot_input, c("check", "fold")))
   }
 
-  equity <- jp_equity_estimate(hole_cards, board, n_active, n_sims = 700)
-
   po_needed <- if (to_call > 0) pot_odds(to_call, pot) else 0
 
   curr_spr <- if (pot > 0) stack / pot else Inf
@@ -1629,9 +1645,13 @@ jaymon_bot <- function(bot_input) {
     if (isTRUE(bf$paired))    risk <- risk + 0.06
     if (bf$connectivity >= 2) risk <- risk + 0.06
   }
-  eff_eq <- equity - risk * (1 - equity)
 
   streets_left <- switch(street, "flop" = 2L, "turn" = 1L, "river" = 0L, 0L)
+
+  # Keep tournament play responsive: use the fast equity heuristic during live decisions.
+  equity <- jp_equity(hole_cards, board)
+
+  eff_eq <- equity - risk * (1 - equity)
 
   implied_threshold <- if (streets_left > 0 && to_call > 0)
     pot_odds(to_call, pot + to_call * 2.5) else po_needed
