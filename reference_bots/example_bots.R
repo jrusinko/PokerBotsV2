@@ -70,6 +70,25 @@ random_bot <- function(bot_input) {
 }
 
 # ----------------------------------------------------------
+# Talking bot
+# ----------------------------------------------------------
+
+talking_bot <- function(bot_input) {
+  if (runif(1) < 0.20) {
+    lines <- c(
+      "TalkingBot: I have a feeling about this one.\n",
+      "TalkingBot: The cards are telling a story.\n",
+      "TalkingBot: Bold choice. Possibly mine.\n",
+      "TalkingBot: Let me think... okay, done.\n",
+      "TalkingBot: This table has excellent dramatic tension.\n"
+    )
+    cat(sample(lines, size = 1))
+  }
+
+  random_bot(bot_input)
+}
+
+# ----------------------------------------------------------
 # Always-call / always-check bot
 # ----------------------------------------------------------
 
