@@ -1128,6 +1128,23 @@ apply_action <- function(tournament_state, action) {
 
   action_type <- as.character(action$type)[1]
 
+  aggressive_all_in_candidate <- (
+    action_type %in% c("bet", "raise") &&
+      "all_in" %in% (legal$legal_action_types %||% character(0))
+  )
+
+  if (!(action_type %in% legal$legal_action_types) && !aggressive_all_in_candidate) {
+    stop(
+      "Illegal action '", action_type,
+      "' for seat ", acting_seat,
+      ". Legal actions are: ",
+      paste(legal$legal_action_types, collapse = ", ")
+    )
+  }
+
+  action <- sanitize_aggressive_action_amount(action, legal, player)
+  action_type <- as.character(action$type)[1]
+
   if (!(action_type %in% legal$legal_action_types)) {
     stop(
       "Illegal action '", action_type,
@@ -2189,7 +2206,7 @@ passive_fallback_action <- function(legal) {
   list(type = "fold")
 }
 
-with_decision_clock <- function(expr, timeout_sec = 1.5) {
+with_decision_clock <- function(expr, timeout_sec = 1) {
   if (!is.numeric(timeout_sec) || length(timeout_sec) != 1 || is.na(timeout_sec) || timeout_sec <= 0) {
     return(force(expr))
   }
@@ -2200,9 +2217,110 @@ with_decision_clock <- function(expr, timeout_sec = 1.5) {
   force(expr)
 }
 
+sanitize_aggressive_action_amount <- function(bot_action, legal, player) {
+  action_type <- as.character(bot_action$type)[1]
+
+  if (!(action_type %in% c("bet", "raise"))) {
+    return(bot_action)
+  }
+
+  raw_amount <- bot_action$amount
+  amount <- suppressWarnings(as.numeric(raw_amount)[1])
+  spec <- legal$actions[[action_type]]
+  if (is.null(spec) || is.null(spec$min_amount) || is.null(spec$max_amount)) {
+    if ("all_in" %in% (legal$legal_action_types %||% character(0)) && !is.na(amount)) {
+      all_in_amount <- as.numeric(legal$actions$all_in$amount)
+      all_in_total_to <- as.numeric((legal$already_committed %||% 0) + all_in_amount)
+
+      if (identical(action_type, "bet") && amount >= all_in_amount) {
+        return(list(type = "all_in"))
+      }
+
+      if (identical(action_type, "raise") && (amount >= all_in_total_to || amount >= all_in_amount)) {
+        return(list(type = "all_in"))
+      }
+    }
+
+    return(passive_fallback_action(legal))
+  }
+
+  min_amount <- as.numeric(spec$min_amount)
+  max_amount <- as.numeric(spec$max_amount)
+
+  amount_is_malformed <- (
+    is.null(raw_amount) ||
+      length(raw_amount) != 1 ||
+      is.na(amount)
+  )
+
+  if (amount_is_malformed) {
+    player_name <- player$name %||% player$player_id %||% "(unknown player)"
+    range_label <- if (identical(action_type, "raise")) "total-to range" else "range"
+    warning(
+      sprintf(
+        "Bot %s (seat %s) returned illegal %s amount %s. Allowed %s: %s to %s. Using minimum legal amount %s.",
+        player_name,
+        player$seat %||% NA,
+        action_type,
+        paste(raw_amount %||% NA, collapse = ", "),
+        range_label,
+        min_amount,
+        max_amount,
+        min_amount
+      ),
+      call. = FALSE
+    )
+    bot_action$amount <- min_amount
+    return(bot_action)
+  }
+
+  if (amount < min_amount) {
+    player_name <- player$name %||% player$player_id %||% "(unknown player)"
+    range_label <- if (identical(action_type, "raise")) "total-to range" else "range"
+    warning(
+      sprintf(
+        "Bot %s (seat %s) returned %s amount %s below the legal %s minimum %s. Using minimum legal amount %s.",
+        player_name,
+        player$seat %||% NA,
+        action_type,
+        amount,
+        range_label,
+        min_amount,
+        min_amount
+      ),
+      call. = FALSE
+    )
+    bot_action$amount <- min_amount
+    return(bot_action)
+  }
+
+  if (amount > max_amount) {
+    player_name <- player$name %||% player$player_id %||% "(unknown player)"
+    range_label <- if (identical(action_type, "raise")) "total-to range" else "range"
+    warning(
+      sprintf(
+        "Bot %s (seat %s) returned %s amount %s above the legal %s maximum %s. Using maximum legal amount %s.",
+        player_name,
+        player$seat %||% NA,
+        action_type,
+        amount,
+        range_label,
+        max_amount,
+        max_amount
+      ),
+      call. = FALSE
+    )
+    bot_action$amount <- max_amount
+    return(bot_action)
+  }
+
+  bot_action$amount <- amount
+  bot_action
+}
+
 safe_get_bot_action <- function(
     tournament_state,
-    decision_timeout_sec = getOption("pokerbots.decision_timeout_sec", 1.5)
+    decision_timeout_sec = getOption("pokerbots.decision_timeout_sec", 1)
 ) {
   if (!inherits(tournament_state, "tournament_state")) {
     stop("`tournament_state` must inherit from 'tournament_state'.")
@@ -2241,22 +2359,21 @@ safe_get_bot_action <- function(
 
   action_type <- as.character(bot_action$type)[1]
 
+  aggressive_all_in_candidate <- (
+    action_type %in% c("bet", "raise") &&
+      "all_in" %in% (legal$legal_action_types %||% character(0))
+  )
+
   # Fallback if illegal type
-  if (!(action_type %in% legal$legal_action_types)) {
+  if (!(action_type %in% legal$legal_action_types) && !aggressive_all_in_candidate) {
     return(passive_fallback_action(legal))
   }
 
-  # Normalize numeric amounts for bet/raise if missing or malformed
-  if (action_type == "bet") {
-    if (is.null(bot_action$amount) || !is.numeric(bot_action$amount) || length(bot_action$amount) != 1 || is.na(bot_action$amount)) {
-      bot_action$amount <- legal$actions$bet$min_amount
-    }
-  }
+  bot_action <- sanitize_aggressive_action_amount(bot_action, legal, player)
+  action_type <- as.character(bot_action$type)[1]
 
-  if (action_type == "raise") {
-    if (is.null(bot_action$amount) || !is.numeric(bot_action$amount) || length(bot_action$amount) != 1 || is.na(bot_action$amount)) {
-      bot_action$amount <- legal$actions$raise$min_amount
-    }
+  if (!(action_type %in% legal$legal_action_types)) {
+    return(passive_fallback_action(legal))
   }
 
   bot_action

@@ -645,15 +645,15 @@ StudentNames<-c("Jaymon","Joel","Nikola","Mehdi","Nate","Mady","Tara","Lucy","Si
 #   timed_tourn$timing_summary
 #   timed_tourn$timing_log
 #
-# timed_tourn <- timed_demo_tournament_run(
-#   bot_fns = participantBots,
-#   player_names = participantNames,
-#   blind_schedule = blinds_500Freeze,
-#   max_hands = 204,
-#   starting_stack = 25000,
-#   verbose = FALSE,
-#   slow_action_threshold_sec = 0.25
-# )
+timed_tourn <- timed_demo_tournament_run(
+   bot_fns = participantBots,
+   player_names = participantNames,
+   blind_schedule = blinds_500Freeze,
+  max_hands = 204,
+   starting_stack = 2000,
+   verbose = FALSE,
+   slow_action_threshold_sec = 0.25
+ )
 # timed_tourn$timing_summary
 # subset(timed_tourn$timing_log, player_name == "Nate")
 

@@ -502,7 +502,7 @@ nate_bot <- function(bot_input) {
 
     if (is_premium) {
       cat("Bill: Found a monster. Starting the war.\n")
-      if (bot_has_action(bot_input, "raise")) return(list(type = "raise", amount = bot_min_raise(bot_input) * 3.5))
+      if (bot_has_action(bot_input, "raise")) return(list(type = "raise", amount = min(bot_min_raise(bot_input) * 3.5, bot_max_raise(bot_input))))
     }
     if (is_strong) {
       return(choose_preferred_action(bot_input, c("call", "check")))
