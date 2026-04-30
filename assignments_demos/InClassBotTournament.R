@@ -472,18 +472,190 @@ demo_tournament_run <- function(
   ))
 }
 
+make_timed_bot_fns <- function(
+    bot_fns,
+    player_names = NULL,
+    slow_action_threshold_sec = 0.25,
+    print_slow_actions = TRUE
+) {
+  if (!is.list(bot_fns)) {
+    stop("`bot_fns` must be a list of bot functions.")
+  }
+
+  if (is.null(player_names)) {
+    player_names <- names(bot_fns)
+  }
+
+  if (is.null(player_names) || length(player_names) != length(bot_fns) || any(is.na(player_names) | player_names == "")) {
+    player_names <- paste0("Bot_", seq_along(bot_fns))
+  }
+
+  timing_env <- new.env(parent = emptyenv())
+  timing_env$action_index <- 0L
+  timing_env$log <- data.frame(
+    action_index = integer(0),
+    player_name = character(0),
+    player_id = character(0),
+    seat = integer(0),
+    street = character(0),
+    pot = numeric(0),
+    elapsed_sec = numeric(0),
+    action_type = character(0),
+    stringsAsFactors = FALSE
+  )
+
+  timed_bot_fns <- Map(function(bot_fn, player_name) {
+    force(bot_fn)
+    force(player_name)
+
+    function(bot_input) {
+      started <- proc.time()[["elapsed"]]
+      bot_action <- bot_fn(bot_input)
+      elapsed <- proc.time()[["elapsed"]] - started
+
+      action_type <- if (is.list(bot_action) && !is.null(bot_action$type)) {
+        as.character(bot_action$type)[1]
+      } else {
+        NA_character_
+      }
+
+      timing_env$action_index <- timing_env$action_index + 1L
+      timing_env$log <- rbind(
+        timing_env$log,
+        data.frame(
+          action_index = timing_env$action_index,
+          player_name = player_name,
+          player_id = as.character(bot_input$player_id %||% NA_character_),
+          seat = as.integer(bot_input$seat %||% NA_integer_),
+          street = as.character(bot_input$street %||% NA_character_),
+          pot = as.numeric(bot_input$pot %||% NA_real_),
+          elapsed_sec = as.numeric(elapsed),
+          action_type = action_type,
+          stringsAsFactors = FALSE
+        )
+      )
+
+      if (isTRUE(print_slow_actions) && is.finite(elapsed) && elapsed >= slow_action_threshold_sec) {
+        cat(sprintf(
+          "\nSLOW BOT ACTION: %s | seat %s | street %s | pot %s | %.3f sec\n",
+          player_name,
+          bot_input$seat %||% NA,
+          bot_input$street %||% NA,
+          bot_input$pot %||% NA,
+          elapsed
+        ))
+      }
+
+      bot_action
+    }
+  }, bot_fns, player_names)
+
+  names(timed_bot_fns) <- names(bot_fns)
+
+  list(
+    bot_fns = timed_bot_fns,
+    timing_env = timing_env
+  )
+}
+
+summarize_bot_timing <- function(timing_log) {
+  if (is.null(timing_log) || nrow(timing_log) == 0) {
+    return(data.frame(
+      player_name = character(0),
+      actions = integer(0),
+      total_sec = numeric(0),
+      mean_sec = numeric(0),
+      median_sec = numeric(0),
+      max_sec = numeric(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  pieces <- split(timing_log, timing_log$player_name)
+  summary <- do.call(
+    rbind,
+    lapply(names(pieces), function(player_name) {
+      x <- pieces[[player_name]]$elapsed_sec
+      data.frame(
+        player_name = player_name,
+        actions = length(x),
+        total_sec = sum(x, na.rm = TRUE),
+        mean_sec = mean(x, na.rm = TRUE),
+        median_sec = median(x, na.rm = TRUE),
+        max_sec = max(x, na.rm = TRUE),
+        stringsAsFactors = FALSE
+      )
+    })
+  )
+
+  summary <- summary[order(-summary$total_sec, -summary$max_sec), ]
+  rownames(summary) <- NULL
+  summary
+}
+
+timed_demo_tournament_run <- function(
+    bot_fns,
+    player_names,
+    slow_action_threshold_sec = 0.25,
+    print_slow_actions = TRUE,
+    print_timing_summary = TRUE,
+    ...
+) {
+  timed <- make_timed_bot_fns(
+    bot_fns = bot_fns,
+    player_names = player_names,
+    slow_action_threshold_sec = slow_action_threshold_sec,
+    print_slow_actions = print_slow_actions
+  )
+
+  result <- demo_tournament_run(
+    bot_fns = timed$bot_fns,
+    player_names = player_names,
+    ...
+  )
+
+  result$timing_log <- timed$timing_env$log
+  result$timing_summary <- summarize_bot_timing(result$timing_log)
+
+  if (isTRUE(print_timing_summary)) {
+    cat("\nBOT TIMING SUMMARY\n")
+    print(result$timing_summary, row.names = FALSE)
+  }
+
+  result
+}
+
 
 
 source("poker_load_all.R")
 poker_load_all(include_demos = FALSE)
 
 source("assignments_demos/poker_demos.R")
+source("student_work/studentBots.R")
 # Setup -------------------------------------------------------------------
 Botbots <- list(random_bot, aggressive_bot, simple_preflop_strength_bot, always_call_bot,strength_by_street_bot,passive_bot,mixed_bot,mixed_bot2,lab_bot,lab_bot_v2)
 Bot_names = c("Rando", "Aggro", "PrePlanner", "GetAlong","Da streets", "ScardyBot","Confused","MoreConfused","LabBot","LabBot2")
 
-studentBots <- list(random_bot, aggressive_bot, simple_preflop_strength_bot, always_call_bot,strength_by_street_bot,passive_bot,mixed_bot,mixed_bot2,lab_bot,lab_bot_v2)
-StudentNames<-c("Jaymon","Joel","Nichola","Mehdi","Nate","Mady","Tara","Lucy","Siena","Ruth")
+studentBots <- list(jaymon_bot, joel_bot, Nikola_bot, mehdi_bot,nate_bot,mady_bot,tara_bot,lucy_bot,siena_bot,ruth_bot)
+StudentNames<-c("Jaymon","Joel","Nikola","Mehdi","Nate","Mady","Tara","Lucy","Siena","Ruth")
+
+# Timing check -------------------------------------------------------------
+# Use this instead of demo_tournament_run() when a tournament feels slow.
+# It returns the usual tournament result plus:
+#   timed_tourn$timing_summary
+#   timed_tourn$timing_log
+#
+# timed_tourn <- timed_demo_tournament_run(
+#   bot_fns = participantBots,
+#   player_names = participantNames,
+#   blind_schedule = blinds_500Freeze,
+#   max_hands = 204,
+#   starting_stack = 25000,
+#   verbose = FALSE,
+#   slow_action_threshold_sec = 0.25
+# )
+# timed_tourn$timing_summary
+# subset(timed_tourn$timing_log, player_name == "Nate")
 
 # Practice -----------------------------------------------------------------
 botindexA<-sample(c(1,2,3,4,5,6,7,8,9,10),5)
@@ -494,13 +666,16 @@ playerindexB<-setdiff(c(1,2,3,4,5,6,7,8,9,10),playerindexA)
 
 participantBots<-c(Botbots[botindexA],studentBots[playerindexA])
 participantNames<-c(Bot_names[botindexA],StudentNames[playerindexA])
+participantNames
 
-demo_tournament_run(bot_fns = participantBots,player_names = participantNames,max_hands = 500,starting_stack = 2000)
+tournA<-demo_tournament_run(bot_fns = participantBots,player_names = participantNames,max_hands = 500,starting_stack = 2000,verbose = FALSE)
+run_viewer_app(tournA)
+
 
 participantBots<-c(Botbots[botindexB],studentBots[playerindexB])
 participantNames<-c(Bot_names[botindexB],StudentNames[playerindexB])
-demo_tournament_run(bot_fns = participantBots,player_names = participantNames,max_hands = 500,starting_stack = 2000)
-
+tournB<-demo_tournament_run(bot_fns = participantBots,player_names = participantNames,max_hands = 500,starting_stack = 2000,verbose = FALSE)
+run_viewer_app(tournB)
 
 # Final round -------------------------------------------------------------
 ## Day 1 A...
@@ -517,9 +692,12 @@ playerindexB<-setdiff(c(1,2,3,4,5,6,7,8,9,10),playerindexA)
 participantBots<-c(Botbots[botindexA],studentBots[playerindexA])
 participantNames<-c(Bot_names[botindexA],StudentNames[playerindexA])
 participantNames
-tourn<-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000,verbose = FALSE)
+tourn<-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 204,starting_stack = 25000,verbose = FALSE)
 run_viewer_app(tourn)
-standings<-c(7,5,9,2,8,10,4,6,3,1)
+
+
+standings<-c(8,10,6,2,3,7,4,9,5,1)
+
 FinalTablebots<-participantBots[standings[1:3]]
 FinalTableNames<-participantNames[standings[1:3]]
 
@@ -536,7 +714,9 @@ participantBots<-c(Botbots[botindexB],studentBots[playerindexB])
 participantNames<-c(Bot_names[botindexB],StudentNames[playerindexB])
 
 
-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000)
+tourn<-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 204,starting_stack = 25000,verbose = FALSE)
+run_viewer_app(tourn)
+
 standings<-c(7,5,9,2,8,10,4,6,3,1)
 
 FinalTablebots<-c(FinalTablebots,participantBots[standings[1:3]])
@@ -553,6 +733,7 @@ participantBots<-SecondChancebots
 participantNames<-SecondChancenames
 participantNames
 demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000)
+run_viewer_app(tourn)
 standings<-c(7,5,9,2,8,10,4,6,3,1)
 
 FinalTablebots<-c(FinalTablebots,participantBots[standings[1:3]])
@@ -569,7 +750,9 @@ UnluckyLoser
 
 participantBots<-Loserbots[LuckyLosers]
 participantNames<-Losernames[LuckyLosers]
-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000)
+demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 204,starting_stack = 25000)
+run_viewer_app(tourn)
+
 standings<-c(7,5,9,2,8,10,4,6,3,1)
 FinalTablebots<-c(FinalTablebots,participantBots[standings[1]])
 FinalTableNames<-c(FinalTableNames,participantNames[standings[1]])
@@ -578,4 +761,5 @@ FinalTableNames<-c(FinalTableNames,participantNames[standings[1]])
 participantBots<-FinalTablebots
 participantNames<-FinalTableNames
 participantNames
-demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 5000,starting_stack = 25000)
+demo_tournament_run(bot_fns = participantBots,blind_schedule = blinds_500Freeze,player_names = participantNames,max_hands = 204,starting_stack = 25000)
+run_viewer_app(tourn)

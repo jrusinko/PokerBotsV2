@@ -1901,6 +1901,9 @@ run_viewer_app <- function(log_data = NULL) {
 
     output$sidebar_controls <- shiny::renderUI({
       current_tab <- input$main_tab %||% "Overview"
+      current_overview_speed <- isolate(input$overview_replay_speed %||% "1000")
+      current_replay_speed <- isolate(input$replay_speed %||% "1500")
+      current_hand_end_behavior <- isolate(input$hand_end_behavior %||% "pause")
 
       if (identical(current_tab, "Overview")) {
         return(
@@ -1924,7 +1927,7 @@ run_viewer_app <- function(log_data = NULL) {
                 "Standard" = "1000",
                 "Fast" = "250"
               ),
-              selected = "1000"
+              selected = current_overview_speed
             ),
             shiny::fluidRow(
               shiny::column(width = 4, shiny::actionButton("overview_play", "Play")),
@@ -1960,7 +1963,7 @@ run_viewer_app <- function(log_data = NULL) {
                 "Standard" = "1500",
                 "Fast" = "100"
               ),
-              selected = "1500"
+              selected = current_replay_speed
             ),
             shiny::selectInput(
               inputId = "hand_end_behavior",
@@ -1969,7 +1972,7 @@ run_viewer_app <- function(log_data = NULL) {
                 "Pause" = "pause",
                 "Continue to next hand" = "continue"
               ),
-              selected = "pause"
+              selected = current_hand_end_behavior
             ),
             shiny::fluidRow(
               shiny::column(width = 4, shiny::actionButton("play_replay", "Play")),

@@ -1,0 +1,106 @@
+source("poker_load_all.R")
+poker_load_all(include_demos = TRUE, verbose = FALSE)
+
+
+mehdi_bot <- function(bot_input) {
+
+  # Get the main information from the current hand
+  # I use these values later to decide whether to bet, call, check, or fold
+  legal <- bot_input$legal_actions$legal_action_types
+  street <- bot_input$street
+  pot <- bot_input$pot
+  facing_bet <- bot_input$current_bet > bot_input$committed_this_round
+
+  # Convert my two private cards into numbers so they are easier to compare (aces count as high cards)
+  hole_vals <- sort(hole_rank_values(bot_input$hole_cards), decreasing = TRUE)
+
+  # Strategy 1:
+  # ========================================
+  # Preflop strategy:
+  # Before any board cards are shown, the bot only plays safer starting hands
+  # It plays pocket pairs or two high cards, and folds weaker hands
+  if (street == "preflop") {
+
+    # A hand is treated as strong if it is a pair or both cards are 10 or higher
+    is_strong_preflop <- (hole_vals[1] == hole_vals[2]) || (hole_vals[1] >= 10 && hole_vals[2] >= 10)
+
+    if (is_strong_preflop) {
+
+      # With a strong starting hand, the bot tries to raise or bet
+      # If that is not possible, it calls
+      if ("raise" %in% legal) return(list(type = "raise", amount = bot_min_raise(bot_input)))
+      if ("bet" %in% legal) return(list(type = "bet", amount = bot_min_bet(bot_input)))
+      if ("call" %in% legal) return(list(type = "call"))
+
+    } else {
+
+      if ("check" %in% legal && !facing_bet) return(list(type = "check"))
+      return(list(type = "fold"))
+    }
+  }
+
+  # Strategy 2:
+  # ========================================================
+  # Postflop strategy:
+  # After the flop, turn, or river, the bot checks whether it has made a pair
+  # This is one way to see if the hand is worth continuing with
+  board_vals <- sort(hole_rank_values(bot_input$board), decreasing = TRUE)
+
+  # The bot counts the hand as "made" (has actual value) if it has a pocket pair,
+  # or if one of its private cards matches a card on the board
+  is_made_hand <- (hole_vals[1] == hole_vals[2]) ||
+    (hole_vals[1] %in% board_vals) ||
+    (hole_vals[2] %in% board_vals)
+
+  # This helper function chooses a bet close to the size of the pot
+  # It also makes sure the bet stays between the minimum and maximum legal bet
+  calc_pot_bet <- function() {
+    target <- as.integer(pot) # target a bet equal to the pot size
+    min_b <- bot_min_bet(bot_input)
+    max_b <- bot_max_bet(bot_input)
+    if (!is.null(min_b) && !is.null(max_b)) {
+      return(max(as.integer(min_b), min(target, as.integer(max_b))))
+    }
+    return(min_b)
+  }
+
+  # If we have at least a pair (made hand), we play more confidently
+  if (is_made_hand) {
+    if (facing_bet) {
+
+      # If another bot has already bet, we call with our pair, by calling instead of trying to compute a raise (for simplicity)
+      if ("call" %in% legal) return(list(type = "call"))
+    } else {
+
+      # If nobody has bet yet, we make a bet about the size of the pot
+      # We try to get value when the hand is at least a pair
+      if ("bet" %in% legal) return(list(type = "bet", amount = calc_pot_bet()))
+    }
+
+   # If we do not have a made hand, we play more carefully
+  } else {
+
+    if (facing_bet) {
+
+      # It's safer to fold (with no pair and a bet in front of us)
+      # The check line is only for backup if the engine lists it as legal
+      if ("check" %in% legal) return(list(type = "check"))
+      return(list(type = "fold"))
+
+    } else {
+
+      # If nobody has bet, we can still try a bet about the size of the pot
+      # We assume checking with no pair would usually give up the chance to win the pot right away
+      if ("bet" %in% legal) return(list(type = "bet", amount = calc_pot_bet()))
+    }
+  }
+
+  # Strategy 3:
+  # ========================================================
+  # Backup actions:
+  # If none of the main rules returned an action, choose the safest legal option
+  # This keeps the bot from failing in an unusual game state
+  if ("check" %in% legal) return(list(type = "check"))
+  if ("call" %in% legal) return(list(type = "call"))
+  return(list(type = "fold"))
+}
