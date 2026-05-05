@@ -153,6 +153,67 @@ print_demo_last_action <- function(tournament_state) {
 
   cat(sprintf("Current pot: %s\n", hand_state$pot))
 }
+
+get_demo_bot_names <- function(bot_fns, player_names) {
+  bot_names <- names(bot_fns)
+  if (is.null(bot_names)) {
+    bot_names <- rep("", length(bot_fns))
+  }
+
+  registered_names <- vapply(bot_fns, function(bot_fn) {
+    if (!is.function(bot_fn)) return("")
+    registered_name <- attr(bot_fn, "bot_name", exact = TRUE)
+    if (is.null(registered_name)) "" else as.character(registered_name)[1]
+  }, character(1))
+
+  ifelse(
+    nzchar(bot_names),
+    bot_names,
+    ifelse(nzchar(registered_names), registered_names, player_names)
+  )
+}
+
+get_demo_remaining_players <- function(tournament_state, bot_fns, player_names) {
+  active_idx <- which(vapply(
+    tournament_state$players,
+    function(p) inherits(p, "player_state") && identical(p$status, "active"),
+    logical(1)
+  ))
+
+  bot_names <- get_demo_bot_names(bot_fns, player_names)
+
+  remaining <- do.call(
+    rbind,
+    lapply(active_idx, function(idx) {
+      p <- tournament_state$players[[idx]]
+      data.frame(
+        bot_index = idx,
+        bot_name = bot_names[[idx]],
+        player_id = p$player_id,
+        name = p$name,
+        seat = p$seat,
+        stack = p$stack,
+        stringsAsFactors = FALSE
+      )
+    })
+  )
+
+  if (is.null(remaining)) {
+    remaining <- data.frame(
+      bot_index = integer(0),
+      bot_name = character(0),
+      player_id = character(0),
+      name = character(0),
+      seat = integer(0),
+      stack = numeric(0),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  remaining <- remaining[order(-remaining$stack, remaining$seat), ]
+  rownames(remaining) <- NULL
+  remaining
+}
 demo_engine_single_hand_verbose <- function(
     bot_fns = list(random_bot, simple_preflop_strength_bot, always_call_bot),
     player_names = c("Bot A", "Bot B", "Bot C"),
@@ -349,6 +410,7 @@ demo_tournament_run <- function(
     player_names = c("Rando", "Aggro", "PrePlanner", "GetAlong",
                      "Da streets", "ScardyBot", "Confused", "MoreConfused"),
     starting_stack = 10000,
+    starting_stacks = NULL,
     blind_schedule = NULL,
     tournament_id = "DEMO_TOURNAMENT",
     rng_seed = NA_integer_,
@@ -356,9 +418,15 @@ demo_tournament_run <- function(
     verbose = TRUE,
     show_hand_details = FALSE,
     hand_pause_mode = c("none", "street", "action"),
-    pause_between_hands = FALSE
+    pause_between_hands = FALSE,
+    stop_at_players = 1L
 ) {
   hand_pause_mode <- match.arg(hand_pause_mode)
+
+  if (!is.numeric(stop_at_players) || length(stop_at_players) != 1 || is.na(stop_at_players) || stop_at_players < 1) {
+    stop("`stop_at_players` must be a positive integer.")
+  }
+  stop_at_players <- as.integer(stop_at_players)
 
   if (!is.na(rng_seed)) {
     set.seed(as.integer(rng_seed))
@@ -373,13 +441,29 @@ demo_tournament_run <- function(
     rng_seed = rng_seed
   )
 
+  if (!is.null(starting_stacks)) {
+    if (!is.numeric(starting_stacks) || length(starting_stacks) != length(bot_fns) || any(is.na(starting_stacks) | starting_stacks < 0)) {
+      stop("`starting_stacks` must be a nonnegative numeric vector with one stack per bot.")
+    }
+
+    for (i in seq_along(tourn$players)) {
+      tourn$players[[i]]$stack <- as.numeric(starting_stacks[[i]])
+      tourn$players[[i]]$all_in <- isTRUE(tourn$players[[i]]$stack <= 0)
+      tourn$players[[i]] <- validate_player_state(tourn$players[[i]])
+    }
+  }
+
   if (isTRUE(verbose)) {
     cat("=====================================\n")
     cat("STARTING TOURNAMENT DEMO\n")
     cat("=====================================\n")
     cat(sprintf("Tournament ID: %s\n", tourn$tournament_id))
     cat(sprintf("Players: %s\n", paste(player_names, collapse = ", ")))
-    cat(sprintf("Starting stack: %s\n", starting_stack))
+    if (is.null(starting_stacks)) {
+      cat(sprintf("Starting stack: %s\n", starting_stack))
+    } else {
+      cat(sprintf("Starting stacks: %s\n", paste(starting_stacks, collapse = ", ")))
+    }
   }
 
   while (TRUE) {
@@ -389,7 +473,7 @@ demo_tournament_run <- function(
       logical(1)
     ))
 
-    if (length(active_idx) <= 1) break
+    if (length(active_idx) <= stop_at_players) break
 
     if (tourn$hand_number >= max_hands) {
       warning("Maximum hand limit reached before tournament finished.")
@@ -459,16 +543,31 @@ demo_tournament_run <- function(
   standings <- standings[order(standings$finishing_place, standings$seat), ]
   rownames(standings) <- NULL
 
+  remaining_players <- get_demo_remaining_players(tourn, bot_fns, player_names)
+  tourn$standings <- standings
+  tourn$remaining_players <- remaining_players
+  tourn$remaining_bot_names <- remaining_players$bot_name
+  tourn$remaining_player_names <- remaining_players$name
+  tourn$remaining_bot_fns <- bot_fns[remaining_players$bot_index]
+  tourn$stopped_at_players <- stop_at_players
+
   if (isTRUE(verbose)) {
     cat("\n=====================================\n")
     cat("TOURNAMENT COMPLETE\n")
     cat("=====================================\n")
     print(standings, row.names = FALSE)
+
+    cat("\nREMAINING PLAYERS TO PASS FORWARD\n")
+    print(remaining_players, row.names = FALSE)
   }
 
   return(list(
     tournament_state = tourn,
-    standings = standings
+    standings = standings,
+    remaining_players = remaining_players,
+    remaining_bot_names = remaining_players$bot_name,
+    remaining_player_names = remaining_players$name,
+    remaining_bot_fns = bot_fns[remaining_players$bot_index]
   ))
 }
 
