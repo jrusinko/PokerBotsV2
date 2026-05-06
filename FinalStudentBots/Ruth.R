@@ -12,6 +12,12 @@ ruth_bot <- function(bot_input) {
   stack <- bot_input$stack
   legal_types <- bot_input$legal_actions$legal_action_types
   public_players <- bot_input$public_players
+
+  ruth_says <- function(lines, chance = 0.16) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
   
   ##### --- 2. DYNAMIC EQUITY CALCULATOR --- #####
   # Estimates our winning probability based on hand rank, board height, and draws.
@@ -101,10 +107,30 @@ ruth_bot <- function(bot_input) {
     strong_hand <- (length(unique(vals)) == 1) || (min(vals) >= 12) || (vals[1] == 14 && vals[2] >= 10)
     
     if (strong_hand && "raise" %in% legal_types) {
+      ruth_says(c(
+        "Ruth: Strong opening. I will keep the tempo professional.",
+        "Ruth: Math and music agree on this rhythm.",
+        "Ruth: Heron soccer taught me to step into space.",
+        "Ruth: Leadership means making the right raise calmly."
+      ))
       return(sanitize_action(list(type = "raise", amount = pot * 0.8)))
     }
     # Defense: Call small raises if we have high-card strength (Jacks or better)
-    if (to_call > 0 && pot_odds < 0.3 && vals[1] >= 11) return(list(type = "call"))
+    if (to_call > 0 && pot_odds < 0.3 && vals[1] >= 11) {
+      ruth_says(c(
+        "Ruth: Good price. I can stay nearby without joining the drama.",
+        "Ruth: Responsible call, supported by the numbers.",
+        "Ruth: Teamwork sometimes means holding the midfield.",
+        "Ruth: Analytics says continue. Calmly."
+      ), chance = 0.14)
+      return(list(type = "call"))
+    }
+    ruth_says(c(
+      "Ruth: I will be the responsible one and pass.",
+      "Ruth: No need for drama before the flop.",
+      "Ruth: This hand does not fit the formation.",
+      "Ruth: Positive fold. We reset."
+    ), chance = 0.12)
     return(choose_preferred_action(bot_input, c("check", "fold")))
   }
   
@@ -115,6 +141,12 @@ ruth_bot <- function(bot_input) {
   # STRATEGY A: High Value (The Nuts)
   # When holding a strong made hand, we play aggressively to extract value from callers.
   if (strong_made) {
+    ruth_says(c(
+      "Ruth: Strong made hand. Time to lead with composure.",
+      "Ruth: The math is clear and the melody is steady.",
+      "Ruth: Heron energy, professional finish.",
+      "Ruth: I will press, but respectfully."
+    ))
     size <- pot * bet_mult("strong")
     if ("raise" %in% legal_types) return(sanitize_action(list(type = "raise", amount = size)))
     if ("bet" %in% legal_types) return(sanitize_action(list(type = "bet", amount = size)))
@@ -124,10 +156,32 @@ ruth_bot <- function(bot_input) {
   # STRATEGY B: Facing a Bet (Defensive)
   if (to_call > 0) {
     # RISK MANAGEMENT: Tighten up against near all-in bets to preserve tournament life.
-    if ((to_call >= stack * 0.8) && equity < 0.7) return(list(type = "fold"))
+    if ((to_call >= stack * 0.8) && equity < 0.7) {
+      ruth_says(c(
+        "Ruth: Tournament life matters. Responsible fold.",
+        "Ruth: I am not chasing drama for eighty percent of my stack.",
+        "Ruth: Perseverance includes knowing when to step back.",
+        "Ruth: That is too much pressure for this formation."
+      ))
+      return(list(type = "fold"))
+    }
     
     # POKER MATH: Call if our estimated win probability (equity) exceeds the pot odds.
-    if (pot_odds < equity) return(list(type = "call"))
+    if (pot_odds < equity) {
+      ruth_says(c(
+        "Ruth: Pot odds and equity are singing in tune.",
+        "Ruth: This call is backed by the analysis.",
+        "Ruth: I can stay close to the play.",
+        "Ruth: Calm call. No drama required."
+      ), chance = 0.15)
+      return(list(type = "call"))
+    }
+    ruth_says(c(
+      "Ruth: The numbers say no, and I respect the numbers.",
+      "Ruth: I will stay positive and fold.",
+      "Ruth: Not every attack needs a shot.",
+      "Ruth: Responsible decision, clean exit."
+    ), chance = 0.13)
     return(list(type = "fold"))
   }
   
@@ -136,16 +190,34 @@ ruth_bot <- function(bot_input) {
     bluff_roll <- runif(1)
     # Value bet with pairs 50% of the time to build the pot.
     if (category == "pair" && bluff_roll < 0.5) {
+      ruth_says(c(
+        "Ruth: Pair on board, measured value.",
+        "Ruth: This is a composed attacking run.",
+        "Ruth: Sports analytics likes a disciplined bet.",
+        "Ruth: I will build this pot with leadership."
+      ), chance = 0.15)
       return(sanitize_action(list(type = "bet", amount = pot * bet_mult("medium"))))
     }
     # RESTRAINED BLUFFING: Only 5% frequency to maintain a tight table image.
     # Never bluff into maniacs who are likely to re-raise.
     if (category == "high_card" && bluff_roll < 0.05 && !is_maniac_table) {
+      ruth_says(c(
+        "Ruth: Very restrained bluff. Please note the professionalism.",
+        "Ruth: Just a small analytical probe.",
+        "Ruth: I am staying near the drama, not becoming the drama.",
+        "Ruth: Quiet pressure, Heron style."
+      ))
       return(sanitize_action(list(type = "bet", amount = pot * 0.4)))
     }
   }
   
   ##### --- 6. DEFAULT ACTION --- #####
   # Default to check if possible, otherwise fold.
+  ruth_says(c(
+    "Ruth: Check or fold. Responsible classroom behavior.",
+    "Ruth: I will keep the tempo steady.",
+    "Ruth: Positive, professional, nearby.",
+    "Ruth: No drama from me. Probably."
+  ), chance = 0.10)
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }

@@ -216,6 +216,12 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
   call_amt <- max(0, bot_input$current_bet - bot_input$committed_this_round)
   rng      <- runif(1)
 
+  mady_says <- function(lines, chance = 0.18) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   # Default opponent profile if not provided
   if (is.null(opponent_profile)) opponent_profile <- .new_opponent_profile()
   archetype <- .opponent_archetype(opponent_profile)
@@ -249,16 +255,41 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
       # Shove with top ~30% of hands when M < 10; tighten near bubble
       shove_threshold <- if (mtt_context$bubble_proximity > 0.7) 2 else if (m < 5) 4 else 3
       if (tier <= shove_threshold) {
+        mady_says(c(
+          "Mady: Optimization says shove. Confidence says obviously.",
+          "Mady: This is an operations research problem with chips.",
+          "Mady: I am applying pressure and maybe spilling coffee on the model.",
+          "Mady: Corruption project update: this pot looks suspiciously mine.",
+          "Mady: Jake would call this risky. Nate would call it attractive, probably.",
+          "Mady: Nate, stop looking so impressed. Or do not."
+        ))
         return(list(type = "raise", amount = stack))  # All-in shove
       }
+      mady_says(c(
+        "Mady: I decline this negative expected value situation.",
+        "Mady: Not every constraint deserves a decision variable.",
+        "Mady: I could throw a shoe, but folding is cleaner.",
+        "Mady: Jake taught me restraint. Nate is making that difficult."
+      ), chance = 0.14)
       return(list(type = if (call_amt == 0) "check" else "fold"))
     }
 
     # Normal preflop: tighten near bubble by skipping marginal opens
     if (mtt_context$bubble_proximity > 0.6 && tier >= 4) {
+      mady_says(c(
+        "Mady: Bubble pressure. Even I can pretend to be disciplined.",
+        "Mady: The economics of survival are compelling here.",
+        "Mady: Strategic restraint. Annoying, but optimal."
+      ), chance = 0.14)
       return(list(type = if (call_amt == 0) "check" else "fold"))
     }
 
+    mady_says(c(
+      "Mady: Let us run the preflop model and tease the table a little.",
+      "Mady: I like my constraints and I like my chances.",
+      "Mady: Class is in session, assuming attendance holds.",
+      "Mady: Nate, this is not flirting. This is applied optimization."
+    ), chance = 0.12)
     return(.preflop_decision(bot_input, tier, in_pos, rng))
   }
 
@@ -300,6 +331,13 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- NUT VALUE ---
   if (hand_type == "NUT_VALUE") {
+    mady_says(c(
+      "Mady: This is not corruption. This is domination.",
+      "Mady: The model says I am allowed to be insufferably confident.",
+      "Mady: I would spill coffee celebrating, but I need both hands for chips.",
+      "Mady: Consider this a very efficient allocation of pressure.",
+      "Mady: Nate, try to keep up. Jake never had the bankroll for this energy."
+    ))
     if (committed) {
       # Jam: get it in
       if (bot_has_action(bot_input, "raise"))
@@ -309,6 +347,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
     # vs. LAG / BLUFFY_AGGRO: check-raise trap
     if (archetype %in% c("LAG", "BLUFFY_AGGRO") && call_amt == 0 && rng < 0.45) {
+      mady_says(c(
+        "Mady: I am setting a trap with a very polite smile.",
+        "Mady: Go ahead, overbet. I am collecting field data.",
+        "Mady: Playful warning: this check has teeth."
+      ))
       return(list(type = "check"))  # Let them bet into us
     }
 
@@ -321,6 +364,12 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- STRONG VALUE ---
   if (hand_type == "STRONG_VALUE") {
+    mady_says(c(
+      "Mady: Strong value. Please make a questionable economic choice.",
+      "Mady: I am confident, competitive, and backed by the spreadsheet.",
+      "Mady: This is where operations research becomes table manners.",
+      "Mady: I would tease you, but the bet sizing already did."
+    ))
     # vs. Calling Station: bet big for value
     amt <- as.integer(pot * max(exploit_size, 0.33))
     if (call_amt > 0) {
@@ -337,6 +386,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- SEMI BLUFF PREMIUM (Combo draw / OESD+FD) ---
   if (hand_type == "SEMI_BLUFF_PREMIUM") {
+    mady_says(c(
+      "Mady: Semi-bluff premium. Risk adjusted mischief.",
+      "Mady: This draw has honors-project-level ambition.",
+      "Mady: If this works, I am calling it optimization."
+    ), chance = 0.16)
     # Always semi-bluff in position; bluff ~60% OOP
     bluff_freq <- if (.is_in_position(bot_input)) 0.70 else 0.55
     # Don't bluff stations
@@ -355,6 +409,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- SEMI BLUFF (8-11 outs) ---
   if (hand_type == "SEMI_BLUFF") {
+    mady_says(c(
+      "Mady: A little bluff, as a treat.",
+      "Mady: The corruption literature would call this incentive design.",
+      "Mady: I am nudging the table toward a bad decision."
+    ), chance = 0.15)
     bluff_freq <- if (.is_in_position(bot_input)) 0.40 else 0.22
     if (archetype == "WEAK_TIGHT")       bluff_freq <- bluff_freq * 1.4
     if (archetype == "CALLING_STATION")  bluff_freq <- 0.05
@@ -372,6 +431,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- WEAK DRAW (4-7 outs) ---
   if (hand_type == "WEAK_DRAW") {
+    mady_says(c(
+      "Mady: Weak draw, but I have won arguments with less.",
+      "Mady: This is thin, like my patience during a bad final exam.",
+      "Mady: Shoe remains on foot for now."
+    ), chance = 0.12)
     if (call_amt > 0) {
       pot_odds <- call_amt / (pot + call_amt)
       # Only call implied odds on flop; fold turn unless very cheap
@@ -383,6 +447,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- MARGINAL SHOWDOWN VALUE ---
   if (hand_type == "MARGINAL_SDV") {
+    mady_says(c(
+      "Mady: Marginal showdown value. Annoyingly nuanced.",
+      "Mady: Economics says compare costs. My ego says call. We shall see.",
+      "Mady: This is the kind of ambiguity that spills coffee."
+    ), chance = 0.14)
     if (call_amt > 0) {
       mdf <- pot / (pot + call_amt)
       # Tighten call threshold vs. aggro players; loosen vs. bluffy ones
@@ -404,6 +473,13 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- AIR: Selective Pure Bluffs ---
   if (hand_type == "AIR") {
+    mady_says(c(
+      "Mady: Air. But confident air.",
+      "Mady: I have no hand and several opinions.",
+      "Mady: This bluff is peer reviewed by vibes.",
+      "Mady: Do not make me throw another shoe.",
+      "Mady: Nate, if you call this bluff I am both annoyed and intrigued."
+    ), chance = 0.13)
     # Only bluff when: (a) opponent folds enough, (b) we have some blocker, (c) board didn't brick run-out
     fold_equity_good <- opponent_profile$fold_to_cbet > 0.55
     has_blocker      <- .has_blocker(cards, board)
@@ -423,6 +499,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
   }
 
   # --- FALLBACK ---
+  mady_says(c(
+    "Mady: Fallback strategy. Still better than chaos.",
+    "Mady: The model is undecided. I remain confident.",
+    "Mady: I will fold/check with grace and mild superiority."
+  ), chance = 0.10)
   if (bot_has_action(bot_input, "check")) return(list(type = "check"))
   # Don't fold to micro-stabs (<2% of stack); too exploitable
   if (call_amt > 0 && call_amt <= (stack * 0.02)) return(list(type = "call"))

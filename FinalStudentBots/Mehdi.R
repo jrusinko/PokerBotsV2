@@ -12,6 +12,12 @@ mehdi_bot <- function(bot_input) {
   # Get our card values (e.g., c(14, 10) for Ace, Ten)
   hole_vals <- sort(hole_rank_values(bot_input$hole_cards), decreasing = TRUE)
 
+  mehdi_says <- function(lines, chance = 0.16) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   # This helper function places a bet equal to the pot size.
   # It ensures the bet stays within the minimum and maximum legal limits.
   calc_pot_bet <- function() {
@@ -38,12 +44,24 @@ mehdi_bot <- function(bot_input) {
 
 
     if (is_strong_preflop) {
+      mehdi_says(c(
+        "Mehdi: Strong preflop range. I will proceed carefully.",
+        "Mehdi: This hand passes the initial screening algorithm.",
+        "Mehdi: Wall Street would call this a favorable signal.",
+        "Mehdi: Morocco builds from structure. So does this raise."
+      ))
       # With a strong starting hand, the bot tries to raise; if that’s not legal, it bets;
       # if that’s not legal, it calls.
       if ("raise" %in% legal) return(list(type = "raise", amount = bot_min_raise(bot_input)))
       if ("bet" %in% legal) return(list(type = "bet", amount = bot_min_bet(bot_input)))
       if ("call" %in% legal) return(list(type = "call"))
     } else {
+      mehdi_says(c(
+        "Mehdi: Weak input. The serious answer is discipline.",
+        "Mehdi: I am not forcing a bad model.",
+        "Mehdi: Careful thinking says no unnecessary volatility.",
+        "Mehdi: This is not the World Cup counterattack."
+      ), chance = 0.12)
       # If the hand is not strong, check if it is legal; if it isn’t, fold.
       if ("check" %in% legal && !facing_bet) return(list(type = "check"))
       return(list(type = "fold"))
@@ -67,9 +85,25 @@ mehdi_bot <- function(bot_input) {
   # if no one has bet yet, make a bet equal to the pot size.
   if (is_made_hand) {
     if (facing_bet) {
-      if ("call" %in% legal) return(list(type = "call"))
+      if ("call" %in% legal) {
+        mehdi_says(c(
+          "Mehdi: Made hand. I will not overreact.",
+          "Mehdi: The data supports a call.",
+          "Mehdi: Serious position, measured response.",
+          "Mehdi: Morocco defended with patience. I can call with patience."
+        ))
+        return(list(type = "call"))
+      }
     } else {
-      if ("bet" %in% legal) return(list(type = "bet", amount = calc_pot_bet()))
+      if ("bet" %in% legal) {
+        mehdi_says(c(
+          "Mehdi: Value identified. Bet sizing should be exact.",
+          "Mehdi: This is portfolio allocation with chips.",
+          "Mehdi: The algorithm recommends pressure.",
+          "Mehdi: Careful does not mean passive."
+        ))
+        return(list(type = "bet", amount = calc_pot_bet()))
+      }
     }
   }
 
@@ -77,10 +111,24 @@ mehdi_bot <- function(bot_input) {
   # if no one has bet, bluff with a bet equal to the pot.
   else {
     if (facing_bet) {
+      mehdi_says(c(
+        "Mehdi: Weak hand facing pressure. Fold equity belongs to them.",
+        "Mehdi: I prefer clean code and clean exits.",
+        "Mehdi: Risk rejected after careful review.",
+        "Mehdi: Serious answer: no."
+      ), chance = 0.12)
       if ("check" %in% legal) return(list(type = "check"))
       return(list(type = "fold"))
     } else {
-      if ("bet" %in% legal) return(list(type = "bet", amount = calc_pot_bet()))
+      if ("bet" %in% legal) {
+        mehdi_says(c(
+          "Mehdi: No made hand, but the market is open.",
+          "Mehdi: This bluff is a calculated model risk.",
+          "Mehdi: Soccer analytics would call this pressing high.",
+          "Mehdi: If Morocco can counter, I can apply pressure."
+        ), chance = 0.14)
+        return(list(type = "bet", amount = calc_pot_bet()))
+      }
     }
   }
 
@@ -90,6 +138,11 @@ mehdi_bot <- function(bot_input) {
   #
   # If our code reaches here due to strange game states, default to safe moves.
   # ========================================================
+  mehdi_says(c(
+    "Mehdi: Strange state. Defaulting to robust behavior.",
+    "Mehdi: Edge case detected. Safety first.",
+    "Mehdi: The system requires a conservative fallback."
+  ), chance = 0.10)
   if ("check" %in% legal) return(list(type = "check"))
   if ("call" %in% legal) return(list(type = "call"))
   return(list(type = "fold"))

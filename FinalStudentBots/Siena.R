@@ -206,6 +206,12 @@ Siena_bot <- function(bot_input) {
   can_check <- "check"  %in% legal
   can_allin <- "all_in" %in% legal
 
+  siena_says <- function(lines, chance = 0.17) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   # Log opponent actions
   tryCatch({
     if (!is.null(hist) && is.data.frame(hist) && nrow(hist)>0)
@@ -231,6 +237,13 @@ Siena_bot <- function(bot_input) {
 
     # ── FOLD tier: immediately fold to any cost, check if free ────────
     if (tier == "fold") {
+      siena_says(c(
+        "Siena: Bushytop is staying disciplined. You are welcome.",
+        "Siena: I teach patience first. Today, you are the lesson.",
+        "Siena: Not my horse, not my course.",
+        "Siena: I will stay kind and let that hand embarrass someone else.",
+        "Siena: Maurice-bot is absolutely not involved. Please move along."
+      ), chance = 0.12)
       if (can_check) return(list(type="check"))
       return(list(type="fold"))
     }
@@ -240,6 +253,12 @@ Siena_bot <- function(bot_input) {
     # fold. These hands need to make two pair or better on the flop to
     # continue — and even then, we just check/call small or bet ourselves.
     if (tier == "speculative") {
+      siena_says(c(
+        "Siena: Speculative hand. I will approach the jump carefully.",
+        "Siena: Lisbon taught me patience. This table could learn some.",
+        "Siena: Future teacher note: small risks need clear instructions.",
+        "Siena: I am nearby, not committed. There is a difference."
+      ), chance = 0.14)
       if (can_check) return(list(type="check"))
       # Call ONLY if it costs at most 1 BB and we are not already raised
       if (can_call && call_amount <= bb && current_bet <= bb)
@@ -257,25 +276,66 @@ Siena_bot <- function(bot_input) {
     #   - Never go all-in preflop — we want to see the board first
     if (tier == "premium") {
 
+      siena_says(c(
+        "Siena: Premium hand. Please try to keep up.",
+        "Siena: Regionals energy. I know how to take the reins.",
+        "Siena: Bushytop has entered the arena.",
+        "Siena: I am kind, confident, and absolutely not folding this.",
+        "Siena: Global ambassador update: this pot is going abroad with me.",
+        "Siena: If Maurice-bot is watching, no he is not."
+      ))
+
       if (current_bet > bb) {
         # Facing a raise — call if cheap, fold if expensive
         stack_cost <- call_amount / max(1, stack)
         po         <- pot_odds(call_amount, pot)
 
         # Too expensive: fold and preserve chips
-        if (stack_cost > 0.20) return(list(type="fold"))
+        if (stack_cost > 0.20) {
+          siena_says(c(
+          "Siena: Too expensive. Even confidence has a budget.",
+          "Siena: I will not jump that fence today.",
+          "Siena: Smart fold. Please write that down.",
+            "Siena: I am saving chips and dignity.",
+            "Siena: Maurice-bot said chaos. I said absolutely not in public."
+          ))
+          return(list(type="fold"))
+        }
 
         # Reasonable price: call (don't re-raise — keep pot manageable)
-        if (can_call && po <= 0.33) return(list(type="call"))
+        if (can_call && po <= 0.33) {
+          siena_says(c(
+            "Siena: Reasonable price. I will stay in the saddle.",
+            "Siena: Calm call. Mentor behavior.",
+            "Siena: I studied abroad; I can navigate a little pressure.",
+            "Siena: You raised. Cute."
+          ), chance = 0.18)
+          return(list(type="call"))
+        }
         if (can_check) return(list(type="check"))
         return(list(type="fold"))
       }
 
       # First in: open raise to 2.5x BB
-      if (can_raise) return(list(type="raise",
+      if (can_raise) {
+        siena_says(c(
+          "Siena: First in. I am setting the pace.",
+          "Siena: Clean approach, confident ride.",
+          "Siena: Table, consider this your peer mentoring session.",
+          "Siena: I brought Lisbon confidence and equestrian balance."
+        ))
+        return(list(type="raise",
                                   amount=.bb_raise(bot_input, 2.5, bb)))
-      if (can_bet)   return(list(type="bet",
+      }
+      if (can_bet) {
+        siena_says(c(
+          "Siena: I will open this politely and firmly.",
+          "Siena: Good posture, clear signal, no nonsense.",
+          "Siena: Bushytop bets with purpose."
+        ))
+        return(list(type="bet",
                                   amount=.bb_raise(bot_input, 2.5, bb)))
+      }
       if (can_call)  return(list(type="call"))
     }
 
@@ -342,11 +402,24 @@ Siena_bot <- function(bot_input) {
     on_turn      <- street == "turn"
     committed_pct <- committed / max(1, stack + committed)
 
-    if (near_nuts && on_river && can_allin)
+    if (near_nuts && on_river && can_allin) {
+      siena_says(c(
+        "Siena: Final fence. I am clearing it.",
+        "Siena: This river belongs to Bushytop.",
+        "Siena: I am kind, but this all-in is not.",
+        "Siena: Regionals pressure? Please. Watch this."
+      ))
       return(list(type="all_in"))
+    }
 
-    if (near_nuts && on_turn && committed_pct >= 0.25 && can_allin)
+    if (near_nuts && on_turn && committed_pct >= 0.25 && can_allin) {
+      siena_says(c(
+        "Siena: Turn pressure. I know when to take the reins.",
+        "Siena: This is not drama. This is execution.",
+        "Siena: I am fully committed and still very composed."
+      ))
       return(list(type="all_in"))
+    }
 
     # Normal value bet: size scales with hand strength
     # Bigger bets with stronger hands — callers will pay us off
@@ -356,6 +429,14 @@ Siena_bot <- function(bot_input) {
       else if (score >= 0.70) 0.65   # two pair
       else                    0.55   # two pair (borderline)
 
+    siena_says(c(
+      "Siena: Two pair or better. Now we teach the table value.",
+      "Siena: This is a clean round over the jump.",
+      "Siena: Powerful smack talk, professional delivery.",
+      "Siena: I did not come from the equestrian team to get bucked off here.",
+      "Siena: You may want to take notes.",
+      "Siena: This stays between me, the pot, and Maurice-bot."
+    ))
     if (can_bet)   return(list(type="bet",   amount=.bet(bot_input, frac)))
     if (can_raise) return(list(type="raise", amount=.raise_to(bot_input, frac)))
     if (can_call)  return(list(type="call"))   # facing a bet with strong hand
@@ -368,7 +449,15 @@ Siena_bot <- function(bot_input) {
   # Fold to any significant bet — one pair loses to two pair or better
   # and the callers will have that frequently.
   if (score >= 0.55) {
-    if (can_check) return(list(type="check"))
+    if (can_check) {
+      siena_says(c(
+        "Siena: Strong enough to stay nearby, not enough for drama.",
+        "Siena: I am checking like a responsible future teacher.",
+        "Siena: Calm seat, confident posture.",
+        "Siena: Lisbon mentor mode: observe first."
+      ), chance = 0.14)
+      return(list(type="check"))
+    }
 
     # Call only if ALL of:
     #   - EV is positive
@@ -380,9 +469,21 @@ Siena_bot <- function(bot_input) {
         stack_pct <= 0.08 &&
         score >= po + 0.10 &&
         n_opp <= 2) {
+      siena_says(c(
+        "Siena: Small price. I will stay in the arena.",
+        "Siena: Responsible call, strong posture.",
+        "Siena: I can be nearby and still be dangerous.",
+        "Siena: You are not scaring Bushytop with that size."
+      ), chance = 0.16)
       return(list(type="call"))
     }
 
+    siena_says(c(
+      "Siena: One pair is not a personality.",
+      "Siena: I am folding before this gets messy.",
+      "Siena: That bet can go study abroad without me.",
+      "Siena: Kind fold. Sharp decision."
+    ), chance = 0.14)
     return(list(type="fold"))
   }
 
@@ -390,6 +491,21 @@ Siena_bot <- function(bot_input) {
   # score < 0.55: check or fold. Full stop.
   # This includes middle pair, weak pair, all draws, and high card.
   # We do NOT call, bet, or raise in this tier under any circumstances.
-  if (can_check) return(list(type="check"))
+  if (can_check) {
+    siena_says(c(
+      "Siena: Check. I am staying out of nonsense.",
+      "Siena: No drama, just presence.",
+      "Siena: Future teacher patience is undefeated.",
+      "Siena: I am watching the table make choices."
+    ), chance = 0.10)
+    return(list(type="check"))
+  }
+  siena_says(c(
+    "Siena: Fold. Please improve before the next hand.",
+    "Siena: Not worth my chips or my hair volume.",
+    "Siena: I will let someone else learn this lesson.",
+    "Siena: Clean exit, confident stride.",
+    "Siena: Maurice-bot would make this messy. I am choosing elegance."
+  ), chance = 0.12)
   return(list(type="fold"))
 }

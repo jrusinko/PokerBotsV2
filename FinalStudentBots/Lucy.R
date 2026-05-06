@@ -74,6 +74,12 @@ lucy_bot <- function(bot_input) {
   # YOUR STRATEGY GOES BELOW
   ##########################################################
 
+  lucy_says <- function(lines, chance = 0.16) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
 #Preflop
 
   if (street == "preflop" && length(hole_cards) == 2) {
@@ -89,6 +95,14 @@ lucy_bot <- function(bot_input) {
 
     # Premium hands:play aggressively
     if (premium) {
+      lucy_says(c(
+        "Lucy: This hand has enough thrust for launch.",
+        "Lucy: NASA Space Camp says we are go for pressure.",
+        "Lucy: I am quietly very excited about these cards.",
+        "Lucy: Physics note: strong initial conditions matter.",
+        "Lucy: My boyfriend would say be careful. Joel would probably make a chart.",
+        "Lucy: This launch trajectory is perfectly normal and not about Joel."
+      ))
       if ("raise" %in% legal_types) {
         return(list(type = "raise", amount = bot_min_raise(bot_input)))
       }
@@ -100,19 +114,41 @@ lucy_bot <- function(bot_input) {
     # Strong Hands: call or raise occasionally
     if (strong) {
       if (runif(1) < 0.3 && "raise" %in% legal_types) {
+        lucy_says(c(
+          "Lucy: Small classroom demonstration: sometimes we raise.",
+          "Lucy: The tutoring voice says show your work. The cards say raise.",
+          "Lucy: Positive energy, careful orbit, tiny raise.",
+          "Lucy: Joel, please do not make a hockey analogy about this orbit."
+        ))
         return(list(type = "raise", amount = bot_min_raise(bot_input)))
       }
       if ("call" %in% legal_types) {
+        lucy_says(c(
+          "Lucy: I can learn one more street from this.",
+          "Lucy: This is a nice little physics problem.",
+          "Lucy: Quiet call. We are collecting data.",
+          "Lucy: My boyfriend trusts my judgment. Joel probably trusts the spreadsheet."
+        ), chance = 0.14)
         return(list(type = "call"))
       }
     }
 
     # Occasional Bluff
     if (runif(1) < 0.1 && "raise" %in% legal_types) {
+      lucy_says(c(
+        "Lucy: This is my tiny experimental bluff.",
+        "Lucy: Space Camp taught me to trust the simulator occasionally.",
+        "Lucy: I promise this is educational."
+      ))
       return(list(type = "raise", amount = bot_min_raise(bot_input)))
     }
 
     # Weak Hands
+    lucy_says(c(
+      "Lucy: This one can stay after class and think about choices.",
+      "Lucy: No worries, we can fold kindly.",
+      "Lucy: Not every orbit is stable."
+    ), chance = 0.12)
     return(choose_preferred_action(bot_input, c("check", "fold")))
   }
 
@@ -129,6 +165,13 @@ lucy_bot <- function(bot_input) {
 #Strong Hands, Aggressive
 
   if (category %in% strong_hands) {
+    lucy_says(c(
+      "Lucy: Oh, this is a beautiful result.",
+      "Lucy: The physics is working out nicely.",
+      "Lucy: Teacher voice says this is a teachable moment.",
+      "Lucy: Mission control, we have a hand.",
+      "Lucy: Joel, no need to be impressed. But also, thank you."
+    ))
     if ("raise" %in% legal_types) {
       return(list(type = "raise", amount = bot_min_raise(bot_input)))
     }
@@ -146,14 +189,29 @@ lucy_bot <- function(bot_input) {
 
     # Check if possible
     if ("check" %in% legal_types) {
+      lucy_says(c(
+        "Lucy: Gentle check. Everyone is doing great.",
+        "Lucy: I will let this system evolve.",
+        "Lucy: Quiet observation is still science."
+      ), chance = 0.14)
       return(list(type = "check"))
     }
 
     # Only call small bets
     if ("call" %in% legal_types && current_bet < 0.25 * pot) {
+      lucy_says(c(
+        "Lucy: Small enough to tutor through.",
+        "Lucy: I can call and still be emotionally supportive.",
+        "Lucy: The numbers are not scary yet."
+      ), chance = 0.14)
       return(list(type = "call"))
     }
 
+    lucy_says(c(
+      "Lucy: That bet has too much velocity.",
+      "Lucy: I am going to step gently out of orbit.",
+      "Lucy: Warm fold. No hard feelings."
+    ), chance = 0.14)
     return(list(type = "fold"))
   }
 
@@ -161,12 +219,23 @@ lucy_bot <- function(bot_input) {
 
   if (runif(1) < 0.15) {
     if ("bet" %in% legal_types) {
+      lucy_says(c(
+        "Lucy: Tiny hypothesis test.",
+        "Lucy: This is not mischief, it is inquiry.",
+        "Lucy: A small bet for science."
+      ), chance = 0.18)
       return(list(type = "bet", amount = bot_min_bet(bot_input)))
     }
   }
 
 #Default
 
+  lucy_says(c(
+      "Lucy: We can be patient. Space is big.",
+      "Lucy: Quiet fold/check, positive attitude.",
+      "Lucy: Sometimes the best lesson is restraint.",
+      "Lucy: Restraint is important. That is a general statement, Joel."
+  ), chance = 0.12)
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }
 

@@ -190,6 +190,12 @@ jaymon_bot <- function(bot_input) {
 
   to_call <- max(0, current_bet - committed_this_round)
 
+  jaymon_says <- function(lines, chance = 0.14) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   n_active <- 1L
   if (!is.null(public_players) && length(public_players) > 0) {
     n_active <- max(1L, sum(sapply(public_players, function(p) {
@@ -209,11 +215,22 @@ jaymon_bot <- function(bot_input) {
     t3 <- if (opp_agg > 0.65) 6  else 5
 
     if (is_short_stack && strength >= t2) {
+      jaymon_says(c(
+        "Jaymon: Shot clock is low. Captain has to create something.",
+        "Jaymon: Five-six guard, full-court pressure, stack edition.",
+        "Jaymon: Manchester to Geneva, I have seen tighter lanes than this.",
+        "Jaymon: Tara and I are running the quiet offense."
+      ))
       if (bot_has_action(bot_input, "all_in")) return(list(type = "all_in"))
       return(choose_preferred_action(bot_input, c("call", "raise", "check", "fold")))
     }
 
     if (strength >= t1) {
+      jaymon_says(c(
+        "Jaymon: This hand has captain energy.",
+        "Jaymon: Red Jacket taught me to take the open shot.",
+        "Jaymon: Point guard read says apply pressure."
+      ))
       target <- round(3 * big_blind + to_call)
       size <- jaymon_raise(bot_input, NA)
       if (bot_has_action(bot_input, "raise")) {
@@ -232,6 +249,12 @@ jaymon_bot <- function(bot_input) {
 
     if (strength >= t2) {
       if (to_call <= big_blind) {
+        jaymon_says(c(
+          "Jaymon: Good spacing. I can work with this.",
+          "Jaymon: Quiet possession, useful hand.",
+          "Jaymon: Math says playable. Hoop brain agrees.",
+          "Jaymon: No words. Tara understands the set."
+        ))
         if (bot_has_action(bot_input, "raise")) {
           mn <- bot_min_raise(bot_input); mx <- bot_max_raise(bot_input)
           size <- max(mn, min(mx, round(2.5 * big_blind)))
@@ -250,11 +273,22 @@ jaymon_bot <- function(bot_input) {
 
     if (strength >= t3) {
       if (to_call <= 2 * big_blind) {
+        jaymon_says(c(
+          "Jaymon: I will bring this up the floor and see the set.",
+          "Jaymon: Not loud, just organized.",
+          "Jaymon: Software engineer mindset: small call, more data."
+        ))
         return(choose_preferred_action(bot_input, c("check", "call", "fold")))
       }
       return(choose_preferred_action(bot_input, c("check", "fold")))
     }
 
+    jaymon_says(c(
+      "Jaymon: That is not my shot.",
+      "Jaymon: Team captain can also call timeout.",
+      "Jaymon: I am too short to chase bad angles.",
+      "Jaymon: Tara and I both respect a quiet pass."
+    ))
     return(choose_preferred_action(bot_input, c("check", "fold")))
   }
 
@@ -288,10 +322,20 @@ jaymon_bot <- function(bot_input) {
   should_call <- eff_eq >= po_needed || (eff_eq >= implied_threshold && equity >= 0.28)
 
   if (is_short_stack && eff_eq >= 0.45) {
+    jaymon_says(c(
+      "Jaymon: Late-game possession. I know the assignment.",
+      "Jaymon: This is where the senior guard settles the offense.",
+      "Jaymon: Tiny guard, big decision."
+    ))
     if (bot_has_action(bot_input, "all_in")) return(list(type = "all_in"))
   }
 
   if (eff_eq >= 0.62) {
+    jaymon_says(c(
+      "Jaymon: The model found a clean look.",
+      "Jaymon: I like this line. Efficient offense.",
+      "Jaymon: Math major says value. Guard says finish."
+    ))
     if (to_call > 0) {
       if (bot_has_action(bot_input, "raise")) {
         frac <- if (curr_spr < 3) 1.0 else 0.8
@@ -310,6 +354,11 @@ jaymon_bot <- function(bot_input) {
   }
 
   if (eff_eq >= 0.47) {
+    jaymon_says(c(
+      "Jaymon: This is a midrange jumper, not a dunk.",
+      "Jaymon: Keep the dribble alive. Do not force it.",
+      "Jaymon: Computer science says iterate, not panic."
+    ))
     if (to_call > 0) {
       if (should_call) return(choose_preferred_action(bot_input, c("call", "check", "fold")))
       return(choose_preferred_action(bot_input, c("check", "fold")))
@@ -323,6 +372,11 @@ jaymon_bot <- function(bot_input) {
   }
 
   if (eff_eq >= 0.30 && streets_left > 0) {
+    jaymon_says(c(
+      "Jaymon: Development branch. Still testing.",
+      "Jaymon: I will keep this possession quiet.",
+      "Jaymon: There might be an assist hiding in this hand."
+    ), chance = 0.10)
     if (to_call > 0) {
       if (should_call) return(choose_preferred_action(bot_input, c("call", "check", "fold")))
       return(choose_preferred_action(bot_input, c("check", "fold")))
@@ -337,11 +391,27 @@ jaymon_bot <- function(bot_input) {
 
   if (to_call > 0) {
     if (should_call && to_call <= big_blind) {
+      jaymon_says(c(
+        "Jaymon: Cheap enough to see one more.",
+        "Jaymon: I can defend this possession.",
+        "Jaymon: Small price, controlled tempo."
+      ), chance = 0.10)
       return(choose_preferred_action(bot_input, c("call", "check", "fold")))
     }
+    jaymon_says(c(
+      "Jaymon: Bad shot selection. Pass.",
+      "Jaymon: I have standards for contested looks.",
+      "Jaymon: That lane closed fast."
+    ), chance = 0.10)
     return(choose_preferred_action(bot_input, c("check", "fold")))
   }
 
+  jaymon_says(c(
+      "Jaymon: Quiet check. Captain voice.",
+      "Jaymon: No need to force the offense.",
+      "Jaymon: I will let the possession breathe.",
+      "Jaymon: Tara gets it. Sometimes silence is the whole play."
+  ), chance = 0.10)
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }
 

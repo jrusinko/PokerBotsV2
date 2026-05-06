@@ -55,6 +55,12 @@ Nikola_bot <- function(bot_input) {
 
   amount_to_call <- max(0, current_bet - committed)
 
+  nikola_says <- function(lines, chance = 0.17) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   ##########################################################
 
   # 2. SAFE ACTION HELPERS
@@ -293,6 +299,14 @@ Nikola_bot <- function(bot_input) {
 
     if (very_strong) {
 
+      nikola_says(c(
+        "Nikola: You misjudged me. That was your first bug.",
+        "Nikola: Serbian confidence, compiled successfully.",
+        "Nikola: This hand has bravado and clean logic.",
+        "Nikola: I am quiet until the algorithm says attack.",
+        "Nikola: Computer science major. Villain model says you are in trouble."
+      ))
+
       if ("raise" %in% legal_types) {
 
         return(list(type = "raise", amount = min_raise_safe()))
@@ -322,6 +336,12 @@ Nikola_bot <- function(bot_input) {
     heads_up_playable <- strong || high >= 10 || suited || connected || any_ace || low >= 7
 
       if (stack_bb <= 6 && heads_up_playable) {
+        nikola_says(c(
+          "Nikola: Heads up and short stacked. Perfect time for drama.",
+          "Nikola: You thought I was isolated. I call it focus.",
+          "Nikola: Small stack, big Serbian energy.",
+          "Nikola: Villain has misread the room."
+        ))
         if ("raise" %in% legal_types) {
           return(list(type = "raise", amount = min_raise_safe()))
         }
@@ -330,6 +350,13 @@ Nikola_bot <- function(bot_input) {
       }
 
       if (heads_up_playable) {
+
+        nikola_says(c(
+          "Nikola: Heads up, I can outthink one villain.",
+          "Nikola: This is where the teasing begins.",
+          "Nikola: I have a plan. You are mostly in it as a mistake.",
+          "Nikola: One opponent is just a debugging exercise."
+        ), chance = 0.14)
 
         if ("raise" %in% legal_types && amount_to_call <= 2 * big_blind) {
 
@@ -348,6 +375,13 @@ Nikola_bot <- function(bot_input) {
       if (amount_to_call == 0) {
 
         if (bluff_now && "bet" %in% legal_types) {
+
+          nikola_says(c(
+            "Nikola: Bluff deployed. Do not look so surprised.",
+            "Nikola: This is not reckless. This is theatrical probability.",
+            "Nikola: I am representing something. Maybe greatness.",
+            "Nikola: You folded to the idea of me."
+          ))
 
           return(list(type = "bet", amount = max_bet_safe()))
 
@@ -372,6 +406,13 @@ Nikola_bot <- function(bot_input) {
     if (is_multiway) {
 
       if (strong) {
+
+        nikola_says(c(
+          "Nikola: Multiway pot. I will still find the weak process.",
+          "Nikola: Too many villains, but I brought enough bravado.",
+          "Nikola: Serbia versus the table. I like the fixture.",
+          "Nikola: I feel alienated, but my range is social."
+        ), chance = 0.14)
 
         if ("raise" %in% legal_types && amount_to_call <= 2 * big_blind) {
 
@@ -402,6 +443,13 @@ Nikola_bot <- function(bot_input) {
 
     if (strong) {
 
+      nikola_says(c(
+        "Nikola: Strong enough to pressure the villains.",
+        "Nikola: I have been underestimated. Again. Convenient.",
+        "Nikola: This line is elegant, unlike your call.",
+        "Nikola: My code says raise. My ego says obviously."
+      ), chance = 0.15)
+
       if ("raise" %in% legal_types && amount_to_call <= 2 * big_blind) {
 
         return(list(type = "raise", amount = min_raise_safe()))
@@ -414,10 +462,23 @@ Nikola_bot <- function(bot_input) {
 
     if (playable && amount_to_call <= 1.5 * big_blind) {
 
+      nikola_says(c(
+        "Nikola: Playable. I will keep calculating.",
+        "Nikola: Not my strongest hand, but I see the path.",
+        "Nikola: You think this is small. I think it is information.",
+        "Nikola: I can work from here."
+      ), chance = 0.12)
+
       return(safe_action(c("call", "check", "fold")))
 
     }
 
+    nikola_says(c(
+      "Nikola: Fold. Even bravado has a base case.",
+      "Nikola: This hand is not worth alienating my stack.",
+      "Nikola: I refuse to donate to badly written villain code.",
+      "Nikola: Not today. I will outsmart you later."
+    ), chance = 0.12)
     return(safe_action(c("check", "fold")))
 
   }
@@ -533,6 +594,12 @@ Nikola_bot <- function(bot_input) {
 call_is_big <- amount_to_call >= 0.35 * stack
 
 if (call_is_big && equity < 0.65 && !monster && !strong_made) {
+  nikola_says(c(
+    "Nikola: Big call, insufficient equity. I am not your liquidity.",
+    "Nikola: I bluff with purpose. I do not call nonsense.",
+    "Nikola: Careful fold. The villain gets no extra chips from me.",
+    "Nikola: This is not fear. This is code review."
+  ), chance = 0.13)
   return(safe_action(c("fold", "check")))
 }
   ##########################################################
@@ -548,6 +615,14 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
   ##########################################################
 
   if (monster || equity >= 0.75) {
+
+    nikola_says(c(
+      "Nikola: Monster hand. Now the bravado is just documentation.",
+      "Nikola: You misjudged me and the board agreed.",
+      "Nikola: Serbia scores on the counterattack.",
+      "Nikola: This pot is about to learn computer science.",
+      "Nikola: I have the hand you were pretending to have."
+    ))
 
     if ("raise" %in% legal_types) {
 
@@ -578,6 +653,13 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
   ##########################################################
 
   if (strong_made || equity >= 0.62) {
+
+    nikola_says(c(
+      "Nikola: Strong hand. I will make the villains uncomfortable.",
+      "Nikola: The model is confident and so am I.",
+      "Nikola: You can call, but do not say I did not warn you.",
+      "Nikola: I am outsmarting the room one branch at a time."
+    ), chance = 0.16)
 
     if ("raise" %in% legal_types && equity >= 0.70) {
 
@@ -620,6 +702,13 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
   ##########################################################
 
   if (medium_made || equity >= 0.48) {
+
+    nikola_says(c(
+      "Nikola: Medium strength. Time for controlled arrogance.",
+      "Nikola: This is not the loud hand. It is the clever hand.",
+      "Nikola: I will not overplay it. Probably.",
+      "Nikola: The villains expect chaos. I offer calculation."
+    ), chance = 0.13)
 
     if (amount_to_call == 0) {
 
@@ -679,6 +768,14 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
 
   if (bluff_now && amount_to_call == 0 && equity >= 0.28) {
 
+    nikola_says(c(
+      "Nikola: Bluff time. Try to keep up.",
+      "Nikola: This is bravado with variable names.",
+      "Nikola: I feel alienated, so I built my own pressure.",
+      "Nikola: Villain thinks I missed. Villain is adorable.",
+      "Nikola: I am not lying. I am simulating confidence."
+    ))
+
     if ("bet" %in% legal_types) {
 
       return(list(type = "bet", amount = min_bet_safe()))
@@ -705,11 +802,24 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
 
   if (amount_to_call == 0) {
 
+    nikola_says(c(
+      "Nikola: Check. Silence can be aggressive.",
+      "Nikola: I will let the villains make mistakes first.",
+      "Nikola: No bet. I am saving the speech for later.",
+      "Nikola: Quiet mode enabled."
+    ), chance = 0.10)
+
     return(safe_action(c("check", "fold")))
 
   }
 
   if (is_heads_up && equity >= 0.43 && pot_odds_value <= 0.32) {
+
+    nikola_says(c(
+      "Nikola: Heads up call. I have read your pattern.",
+      "Nikola: One villain, one calculation.",
+      "Nikola: I can continue. You are not that scary."
+    ), chance = 0.12)
 
     return(safe_action(c("call", "fold")))
 
@@ -717,10 +827,22 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
 
   if (!is_heads_up && equity > pot_odds_value + 0.15) {
 
+    nikola_says(c(
+      "Nikola: Multiway call, but only because the math permits it.",
+      "Nikola: I am still here. Annoying, yes.",
+      "Nikola: Pot odds open the door. I walk in dramatically."
+    ), chance = 0.12)
+
     return(safe_action(c("call", "fold")))
 
   }
 
+  nikola_says(c(
+    "Nikola: Fold. The ambush will wait.",
+    "Nikola: You win this branch, not the program.",
+    "Nikola: I was misjudged before the hand and I will be misjudged after.",
+    "Nikola: Exit condition met."
+  ), chance = 0.12)
   return(safe_action(c("fold", "check")))
 
 }

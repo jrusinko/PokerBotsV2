@@ -901,6 +901,238 @@ run_viewer_app <- function(log_data = NULL) {
     )
   }
 
+  winner_announcement_text <- function(hand) {
+    winner_info <- winner_display_data(hand)
+    if (is.null(winner_info) || length(winner_info$names) == 0) {
+      return("")
+    }
+
+    payout_text <- paste(
+      vapply(seq_along(winner_info$names), function(i) {
+        amt <- winner_info$amounts[i]
+        if (!is.na(amt) && amt > 0) {
+          paste0(winner_info$names[i], " won ", amt, " chips")
+        } else {
+          winner_info$names[i]
+        }
+      }, character(1)),
+      collapse = ". "
+    )
+
+    paste("Hand Winner.", payout_text)
+  }
+
+  elimination_announcement_text <- function(snapshot, hand) {
+    if (is.null(snapshot) || is.null(hand) ||
+        !identical(as_scalar_chr(snapshot$snapshot_type, ""), "elimination")) {
+      return("")
+    }
+
+    elim_ids <- hand$eliminations_this_hand %||% character(0)
+    if (length(elim_ids) == 0) {
+      return("")
+    }
+
+    lookup <- player_name_lookup(hand)
+    elim_names <- vapply(elim_ids, function(pid) {
+      lookup[[paste0("pid:", pid)]] %||% pid
+    }, character(1))
+
+    paste(
+      if (length(elim_names) > 1) "Players Eliminated." else "Player Eliminated.",
+      paste(elim_names, collapse = ", "),
+      "Tournament life ends here."
+    )
+  }
+
+  viewer_word_count <- function(text) {
+    text <- trimws(gsub("\\s+", " ", as.character(text %||% "")))
+    if (!nzchar(text)) return(0L)
+    length(strsplit(text, "\\s+")[[1]])
+  }
+
+  estimated_speech_ms <- function(text, seconds_per_word = 0.36, extra_ms = 500L) {
+    words <- viewer_word_count(text)
+    if (words <= 0L) return(0L)
+    as.integer(ceiling(words * seconds_per_word * 1000 + extra_ms))
+  }
+
+  snapshot_speech_hold_ms <- function(hand, snapshot) {
+    if (is.null(hand) || is.null(snapshot)) {
+      return(0L)
+    }
+
+    texts <- character(0)
+    action_history <- hand$action_history %||% list()
+    action_count <- as.integer(snapshot$action_count %||% 0L)
+    action_count <- max(0L, min(action_count, length(action_history)))
+    if (action_count > 0L) {
+      action <- action_history[[action_count]]
+      chatter <- paste(trimws(as.character(action$chatter %||% action$table_talk %||% "")), collapse = " ")
+      chatter <- strip_chatter_speaker_prefix(chatter)
+      if (nzchar(chatter)) {
+        speaker <- as_scalar_chr(action$player_name, action$player_id %||% "")
+        texts <- c(texts, if (nzchar(speaker)) paste(speaker, "says:", chatter) else chatter)
+      }
+    }
+
+    snap_type <- as_scalar_chr(snapshot$snapshot_type, "")
+    if (identical(snap_type, "hand_end")) {
+      texts <- c(texts, winner_announcement_text(hand))
+    }
+    if (identical(snap_type, "elimination")) {
+      texts <- c(texts, elimination_announcement_text(snapshot, hand))
+    }
+
+    max(vapply(texts, estimated_speech_ms, integer(1)), 0L)
+  }
+
+  intro_players_from_replay <- function(replay) {
+    first_hand <- replay$hand_log[[1]] %||% list()
+    starters <- first_hand$starting_stack_summary %||% list()
+    if (!is.list(starters) || length(starters) == 0) {
+      starters <- replay$players %||% list()
+    }
+
+    if (!is.list(starters) || length(starters) == 0) {
+      return(data.frame(
+        player_id = character(0),
+        player_name = character(0),
+        seat = numeric(0),
+        stack = numeric(0),
+        stringsAsFactors = FALSE
+      ))
+    }
+
+    rows <- lapply(starters, function(p) {
+      data.frame(
+        player_id = as_scalar_chr(p$player_id, p$id %||% ""),
+        player_name = as_scalar_chr(p$player_name, p$name %||% p$player_id %||% "Player"),
+        seat = as_scalar_num(p$seat),
+        stack = as_scalar_num(p$stack),
+        stringsAsFactors = FALSE
+      )
+    })
+
+    out <- do.call(rbind, rows)
+    out <- out[order(out$seat, out$player_name), , drop = FALSE]
+    rownames(out) <- NULL
+    out
+  }
+
+  intro_chatter_lookup <- function(replay) {
+    lookup <- list()
+    for (hand in replay$hand_log %||% list()) {
+      actions <- hand$action_history %||% list()
+      if (!is.list(actions) || length(actions) == 0) next
+      for (a in actions) {
+        chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = " ")
+        chatter <- strip_chatter_speaker_prefix(chatter)
+        if (!nzchar(chatter)) next
+
+        keys <- unique(c(
+          paste0("pid:", as_scalar_chr(a$player_id, "")),
+          paste0("name:", as_scalar_chr(a$player_name, ""))
+        ))
+        keys <- keys[nzchar(sub("^[^:]+:", "", keys))]
+        for (key in keys) {
+          lookup[[key]] <- unique(c(lookup[[key]] %||% character(0), chatter))
+        }
+      }
+    }
+    lookup
+  }
+
+  intro_comment_for_player <- function(player, lookup) {
+    pid_key <- paste0("pid:", as_scalar_chr(player$player_id, ""))
+    name_key <- paste0("name:", as_scalar_chr(player$player_name, ""))
+    lines <- unique(c(lookup[[pid_key]] %||% character(0), lookup[[name_key]] %||% character(0)))
+    lines <- lines[nzchar(trimws(lines))]
+    if (length(lines) == 0) return("")
+    sample(lines, size = 1)
+  }
+
+  intro_announcement_text <- function(player) {
+    paste0(
+      "In seat ", as_scalar_chr(player$seat, "?"),
+      ", we have ", as_scalar_chr(player$player_name, "Player"),
+      ", who enters the day with ", as_scalar_chr(player$stack, "unknown"),
+      " chips."
+    )
+  }
+
+  intro_player_hold_ms <- function(player, comment = "") {
+    text <- intro_announcement_text(player)
+    if (nzchar(comment)) {
+      text <- paste(text, as_scalar_chr(player$player_name, "Player"), "says:", comment)
+    } else {
+      text <- paste(text, "Bot signal.")
+    }
+    max(2600L, estimated_speech_ms(text, extra_ms = 1100L))
+  }
+
+  build_intro_table_ui <- function(players, active_index = NA_integer_) {
+    if (!is.data.frame(players) || nrow(players) == 0) {
+      return(shiny::tags$div(class = "viewer-empty-state", "No players were found for the tournament intro."))
+    }
+
+    positions <- table_seat_positions(nrow(players))
+    seat_nodes <- Map(function(i, pos) {
+      seat_pos <- display_seat_position(pos)
+      if (is.null(seat_pos)) return(NULL)
+
+      p <- players[i, , drop = FALSE]
+      classes <- c("viewer-seat", "viewer-intro-seat")
+      if (identical(as.integer(i), as.integer(active_index))) {
+        classes <- c(classes, "viewer-intro-seat-active")
+      }
+
+      shiny::tags$div(
+        class = paste(classes, collapse = " "),
+        style = paste0("left:", round(seat_pos$left, 1), "%; top:", round(seat_pos$top, 1), "%;"),
+        shiny::tags$div(
+          class = "viewer-seat-head",
+          shiny::tags$div(class = "viewer-seat-name", as_scalar_chr(p$player_name, "Player")),
+          shiny::tags$div(class = "viewer-seat-seatno", paste0("Seat ", as_scalar_chr(p$seat, "?")))
+        ),
+        shiny::tags$div(class = "viewer-seat-stack", paste0("Stack ", as_scalar_chr(p$stack, "?"))),
+        shiny::tags$div(class = "viewer-status-pill viewer-status-active", "Ready")
+      )
+    }, seq_len(nrow(players)), positions)
+
+    active_player <- if (!is.na(active_index) && active_index >= 1L && active_index <= nrow(players)) {
+      players[active_index, , drop = FALSE]
+    } else {
+      NULL
+    }
+
+    shiny::tags$div(
+      class = "viewer-replay-layout",
+      shiny::tags$div(
+        class = "viewer-table-wrap",
+        shiny::tags$div(class = "viewer-table-felt"),
+        shiny::tags$div(
+          class = "viewer-table-center",
+          shiny::tags$div(class = "viewer-table-street", "TABLE INTRO"),
+          shiny::tags$div(
+            class = "viewer-center-brand",
+            shiny::tags$div(class = "viewer-center-brand-top", "HWS"),
+            shiny::tags$div(class = "viewer-center-brand-main", "Poker Capstone")
+          ),
+          shiny::tags$div(
+            class = "viewer-snapshot-message",
+            if (is.null(active_player)) {
+              "Press Play Intro to introduce the table."
+            } else {
+              intro_announcement_text(active_player)
+            }
+          )
+        ),
+        seat_nodes
+      )
+    )
+  }
+
   build_player_seat_ui <- function(player, snapshot, hand, pos, reveal_player_ids = NULL) {
     seat_pos <- display_seat_position(pos)
     if (is.null(seat_pos)) {
@@ -1327,6 +1559,9 @@ run_viewer_app <- function(log_data = NULL) {
     )
   }
 
+  intro_players <- intro_players_from_replay(replay)
+  intro_chatter <- intro_chatter_lookup(replay)
+
   hand_choices <- stats::setNames(
     as.character(seq_along(replay$hand_log)),
     vapply(replay$hand_log, hand_label, character(1))
@@ -1705,6 +1940,15 @@ run_viewer_app <- function(log_data = NULL) {
         .viewer-seat-eliminated {
           opacity: 0.58;
         }
+        .viewer-intro-seat {
+          transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+        }
+        .viewer-intro-seat-active {
+          transform: translate(-50%, -50%) scale(1.1);
+          border-color: #f1c94c;
+          box-shadow: 0 0 0 4px rgba(241, 201, 76, 0.34), 0 16px 34px rgba(20, 27, 38, 0.24);
+          z-index: 5;
+        }
         .viewer-seat-head {
           display: flex;
           justify-content: space-between;
@@ -1824,6 +2068,13 @@ run_viewer_app <- function(log_data = NULL) {
                   { f: 330, endF: 277, t: 0.38, d: 0.34 },
                   { f: 277, endF: 220, t: 0.76, d: 0.46 }
                 ]
+              : kind === 'bot'
+                ? [
+                    { f: 880, t: 0.00, d: 0.08 },
+                    { f: 1175, t: 0.14, d: 0.08 },
+                    { f: 988, t: 0.28, d: 0.08 },
+                    { f: 1319, t: 0.42, d: 0.10 }
+                  ]
               : kind === 'chatter'
                 ? [
                     { f: 1568, t: 0.00, d: 0.055 },
@@ -1866,44 +2117,71 @@ run_viewer_app <- function(log_data = NULL) {
           function speakChatter(message) {
             if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
 
-            var botVoiceMap = {
-              'Rando': 0,
-              'Aggro': 0,
-              'PrePlanner': 0,
-              'GetAlong': 0,
-              'Da streets': 0,
-              'ScardyBot': 0,
-              'Confused': 0,
-              'MoreConfused': 0,
-              'LabBot': 0,
-              'LabBot2': 0,
-              'Jaymon': 0,
-              'Joel': 0,
-              'Nikola': 0,
-              'Mehdi': 0,
-              'Nate': 0,
-              'Mady': 0,
-              'Tara': 0,
-              'Lucy': 0,
-              'Siena': 0,
-              'Ruth': 0,
-              'King Rikki': 5,
-              'Hatch Bot': 1,
-              'Gearan up to beat you': 0,
-              'Sir Hu McBluff': 19,
-              'Talmage Bot': 12,
-              'Bot inSpector': 16,
-              'Khan you fold?': 11,
-              'Fordeing Ahead': 3,
-              'Maurice Hawkins': 4,
-              'Biermann': 2,
-              'Biermann Bot': 2
-            };
-
             function availableVoices() {
               var voices = window.speechSynthesis.getVoices();
               window.viewerSpeechVoices = voices;
               return voices;
+            }
+
+            function shuffledIndices(n) {
+              var out = Array.from({ length: n }, function(_, i) { return i; });
+              for (var i = out.length - 1; i > 0; i--) {
+                var j = Math.floor(Math.random() * (i + 1));
+                var tmp = out[i];
+                out[i] = out[j];
+                out[j] = tmp;
+              }
+              return out;
+            }
+
+            function getBotVoiceProfiles(voices) {
+              var botNames = [
+                'Rando', 'Aggro', 'PrePlanner', 'GetAlong', 'Da streets',
+                'ScardyBot', 'Confused', 'MoreConfused', 'LabBot', 'LabBot2',
+                'Jaymon', 'Joel', 'Nikola', 'Mehdi', 'Nate',
+                'Mady', 'Tara', 'Lucy', 'Siena', 'Ruth',
+                'King Rikki', 'Hatch Bot', 'Gearan up to beat you', 'Sir Hu McBluff', 'Talmage Bot',
+                'Bot inSpector', 'Khan you fold?', 'Fordeing Ahead', 'Maurice Hawkins', 'Biermann'
+              ];
+              var aliasMap = { 'Biermann Bot': 'Biermann' };
+              var pitchCycle = [0.86, 0.94, 1.02, 1.10, 1.18];
+              var rateCycle = [0.94, 0.98, 1.02, 1.06];
+
+              if (!voices || !voices.length) return {};
+              if (window.viewerBotVoiceProfiles && window.viewerBotVoiceProfileCount === voices.length) {
+                return window.viewerBotVoiceProfiles;
+              }
+
+              var botVoiceIndices = voices.map(function(_, i) { return i; }).filter(function(i) {
+                return i >= 1 && i <= 21;
+              });
+              if (!botVoiceIndices.length) {
+                botVoiceIndices = voices.map(function(_, i) { return i; });
+              }
+
+              var voiceOrder = [];
+              while (voiceOrder.length < botNames.length) {
+                voiceOrder = voiceOrder.concat(shuffledIndices(botVoiceIndices.length).map(function(i) {
+                  return botVoiceIndices[i];
+                }));
+              }
+
+              var profiles = {};
+              botNames.forEach(function(name, i) {
+                profiles[name] = {
+                  voiceIndex: voiceOrder[i],
+                  pitch: pitchCycle[i % pitchCycle.length],
+                  rate: rateCycle[i % rateCycle.length]
+                };
+              });
+
+              Object.keys(aliasMap).forEach(function(alias) {
+                profiles[alias] = profiles[aliasMap[alias]];
+              });
+
+              window.viewerBotVoiceProfiles = profiles;
+              window.viewerBotVoiceProfileCount = voices.length;
+              return profiles;
             }
 
             var text = message && message.text ? String(message.text) : '';
@@ -1927,19 +2205,55 @@ run_viewer_app <- function(log_data = NULL) {
             }
 
             var speakerAlias = speaker.replace(/\\s+Bot$/, '');
-            var voiceIndex = Object.prototype.hasOwnProperty.call(botVoiceMap, speaker)
-              ? botVoiceMap[speaker]
-              : Object.prototype.hasOwnProperty.call(botVoiceMap, speakerAlias)
-                ? botVoiceMap[speakerAlias]
+            var voiceProfiles = getBotVoiceProfiles(voices);
+            var profile = Object.prototype.hasOwnProperty.call(voiceProfiles, speaker)
+              ? voiceProfiles[speaker]
+              : Object.prototype.hasOwnProperty.call(voiceProfiles, speakerAlias)
+                ? voiceProfiles[speakerAlias]
                 : null;
-            if (voiceIndex !== null && voices[voiceIndex]) {
-              utterance.voice = voices[voiceIndex];
+            if (profile && voices[profile.voiceIndex]) {
+              utterance.voice = voices[profile.voiceIndex];
             }
-            utterance.rate = 1.02;
-            utterance.pitch = 1.05;
+            utterance.rate = profile ? profile.rate : 1.02;
+            utterance.pitch = profile ? profile.pitch : 1.05;
             utterance.volume = 0.95;
 
-            window.speechSynthesis.cancel();
+            if (!message || !message.queue) {
+              window.speechSynthesis.cancel();
+            }
+            window.setTimeout(function() {
+              window.speechSynthesis.speak(utterance);
+            }, 180);
+          }
+
+          function speakAnnouncement(message) {
+            if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
+
+            var text = message && message.text ? String(message.text) : '';
+            text = text.replace(/\\s+/g, ' ').trim();
+            if (!text) return;
+
+            var voices = window.speechSynthesis.getVoices();
+            window.viewerSpeechVoices = voices;
+            if (!voices.length && !message.__voiceRetry) {
+              window.setTimeout(function() {
+                message.__voiceRetry = true;
+                speakAnnouncement(message);
+              }, 250);
+              return;
+            }
+
+            var utterance = new SpeechSynthesisUtterance(text);
+            if (voices[0]) {
+              utterance.voice = voices[0];
+            }
+            utterance.rate = 0.98;
+            utterance.pitch = 1.00;
+            utterance.volume = 0.96;
+
+            if (!message || !message.queue) {
+              window.speechSynthesis.cancel();
+            }
             window.setTimeout(function() {
               window.speechSynthesis.speak(utterance);
             }, 180);
@@ -1954,10 +2268,13 @@ run_viewer_app <- function(log_data = NULL) {
             }
             Shiny.addCustomMessageHandler('viewer-play-sound', function(message) {
               var kind = message && message.kind;
-              playToneSequence(kind === 'level' || kind === 'elimination' || kind === 'chatter' ? kind : 'feature');
+              playToneSequence(kind === 'level' || kind === 'elimination' || kind === 'chatter' || kind === 'bot' ? kind : 'feature');
             });
             Shiny.addCustomMessageHandler('viewer-speak-chatter', function(message) {
               speakChatter(message || {});
+            });
+            Shiny.addCustomMessageHandler('viewer-speak-announcement', function(message) {
+              speakAnnouncement(message || {});
             });
           }
         })();
@@ -1978,6 +2295,11 @@ run_viewer_app <- function(log_data = NULL) {
       shiny::mainPanel(
         shiny::tabsetPanel(
           id = "main_tab",
+          selected = "Overview",
+          shiny::tabPanel(
+            "Table Intro",
+            shiny::uiOutput("table_intro_ui")
+          ),
           shiny::tabPanel(
             "Overview",
             shiny::h4("Tournament summary"),
@@ -2013,9 +2335,17 @@ run_viewer_app <- function(log_data = NULL) {
     broadcast_feature_hand <- shiny::reactiveVal(NA_integer_)
     broadcast_banner <- shiny::reactiveVal(NULL)
     resume_overview_after_feature <- shiny::reactiveVal(FALSE)
+    resume_overview_after_intro <- shiny::reactiveVal(FALSE)
+    pending_feature_hand_start <- shiny::reactiveVal(NA_integer_)
     last_seen_broadcast_level <- shiny::reactiveVal(as.integer(replay$hand_log[[as.integer(first_hand_choice)]]$level %||% NA_integer_))
     last_elimination_sound_key <- shiny::reactiveVal("")
     last_chatter_sound_key <- shiny::reactiveVal("")
+    last_winner_announcement_key <- shiny::reactiveVal("")
+    last_replay_advance_key <- shiny::reactiveVal("")
+    intro_playing <- shiny::reactiveVal(FALSE)
+    intro_active_index <- shiny::reactiveVal(NA_integer_)
+    last_intro_advance_key <- shiny::reactiveVal("")
+    current_intro_comment <- shiny::reactiveVal("")
 
     current_hand_choice <- function() {
       selected <- as.character(input$hand_index %||% first_hand_choice)
@@ -2049,7 +2379,7 @@ run_viewer_app <- function(log_data = NULL) {
       ))
     }
 
-    play_broadcast_sound <- function(kind = c("feature", "level", "elimination", "chatter")) {
+    play_broadcast_sound <- function(kind = c("feature", "level", "elimination", "chatter", "bot")) {
       kind <- match.arg(kind)
       if (!isTRUE(input$broadcast_mode %||% FALSE)) {
         return(invisible(NULL))
@@ -2059,7 +2389,7 @@ run_viewer_app <- function(log_data = NULL) {
       invisible(NULL)
     }
 
-    speak_broadcast_chatter <- function(text, speaker = "") {
+    speak_broadcast_chatter <- function(text, speaker = "", queue = FALSE) {
       if (!isTRUE(input$broadcast_mode %||% FALSE) ||
           !isTRUE(input$broadcast_speak_chatter %||% TRUE)) {
         return(invisible(NULL))
@@ -2069,7 +2399,24 @@ run_viewer_app <- function(log_data = NULL) {
         "viewer-speak-chatter",
         list(
           text = as_scalar_chr(text, ""),
-          speaker = as_scalar_chr(speaker, "")
+          speaker = as_scalar_chr(speaker, ""),
+          queue = isTRUE(queue)
+        )
+      )
+      invisible(NULL)
+    }
+
+    speak_broadcast_announcement <- function(text, queue = TRUE) {
+      if (!isTRUE(input$broadcast_mode %||% FALSE) ||
+          !isTRUE(input$broadcast_speak_chatter %||% TRUE)) {
+        return(invisible(NULL))
+      }
+
+      session$sendCustomMessage(
+        "viewer-speak-announcement",
+        list(
+          text = as_scalar_chr(text, ""),
+          queue = isTRUE(queue)
         )
       )
       invisible(NULL)
@@ -2082,8 +2429,8 @@ run_viewer_app <- function(log_data = NULL) {
 
       is_overview_playing(FALSE)
       broadcast_feature_hand(as.integer(hand_idx))
+      pending_feature_hand_start(as.integer(hand_idx))
       shiny::updateSelectInput(session, "hand_index", selected = as.character(hand_idx))
-      shiny::updateTabsetPanel(session, "main_tab", selected = "Hand Replay")
       play_broadcast_sound("feature")
 
       reason_text <- hand_feature_reason(hand_idx)
@@ -2093,7 +2440,6 @@ run_viewer_app <- function(log_data = NULL) {
         subtitle = if (nzchar(reason_text)) reason_text else "Featured hand replay"
       )
 
-      is_playing(TRUE)
       invisible(NULL)
     }
 
@@ -2106,6 +2452,7 @@ run_viewer_app <- function(log_data = NULL) {
       next_idx <- if (is.na(hand_idx)) NA_integer_ else hand_idx + 1L
 
       broadcast_feature_hand(NA_integer_)
+      pending_feature_hand_start(NA_integer_)
       is_playing(FALSE)
       shiny::updateTabsetPanel(session, "main_tab", selected = "Overview")
 
@@ -2191,9 +2538,35 @@ run_viewer_app <- function(log_data = NULL) {
 
     output$sidebar_controls <- shiny::renderUI({
       current_tab <- input$main_tab %||% "Overview"
-      current_overview_speed <- isolate(input$overview_replay_speed %||% "1000")
+      current_overview_speed <- isolate(input$overview_replay_speed %||% "250")
       current_replay_speed <- isolate(input$replay_speed %||% "1500")
       current_hand_end_behavior <- isolate(input$hand_end_behavior %||% "pause")
+
+      if (identical(current_tab, "Table Intro")) {
+        return(
+          shiny::tagList(
+            shiny::checkboxInput(
+              inputId = "broadcast_mode",
+              label = "Broadcast mode",
+              value = isTRUE(input$broadcast_mode %||% FALSE)
+            ),
+            if (isTRUE(input$broadcast_mode %||% FALSE)) {
+              shiny::checkboxInput(
+                inputId = "broadcast_speak_chatter",
+                label = "Speak intro and comments",
+                value = isTRUE(input$broadcast_speak_chatter %||% TRUE)
+              )
+            },
+            shiny::fluidRow(
+              shiny::column(width = 4, shiny::actionButton("intro_play", "Play Intro")),
+              shiny::column(width = 4, shiny::actionButton("intro_pause", "Pause")),
+              shiny::column(width = 4, shiny::actionButton("intro_reset", "Reset"))
+            ),
+            shiny::hr(),
+            shiny::actionButton("intro_start_tournament", "Start Tournament Broadcast")
+          )
+        )
+      }
 
       if (identical(current_tab, "Overview")) {
         return(
@@ -2323,8 +2696,107 @@ run_viewer_app <- function(log_data = NULL) {
       )
     })
 
+    output$table_intro_ui <- shiny::renderUI({
+      build_intro_table_ui(intro_players, intro_active_index())
+    })
+
+    shiny::observeEvent(input$intro_play, {
+      if (nrow(intro_players) == 0) {
+        return()
+      }
+      if (is.na(intro_active_index())) {
+        intro_active_index(1L)
+        current_intro_comment("")
+      }
+      last_intro_advance_key("")
+      intro_playing(TRUE)
+    })
+
+    shiny::observeEvent(input$intro_pause, {
+      intro_playing(FALSE)
+      last_intro_advance_key("")
+    })
+
+    shiny::observeEvent(input$intro_reset, {
+      intro_playing(FALSE)
+      intro_active_index(NA_integer_)
+      current_intro_comment("")
+      last_intro_advance_key("")
+    })
+
+    shiny::observeEvent(input$intro_start_tournament, {
+      intro_playing(FALSE)
+      intro_active_index(NA_integer_)
+      current_intro_comment("")
+      last_intro_advance_key("")
+      shiny::updateTabsetPanel(session, "main_tab", selected = "Overview")
+      shiny::updateSelectInput(session, "hand_index", selected = first_hand_choice)
+      if (isTRUE(input$broadcast_mode %||% FALSE)) {
+        resume_overview_after_intro(TRUE)
+      }
+    })
+
+    shiny::observe({
+      if (!isTRUE(intro_playing())) {
+        return()
+      }
+      if (!identical(input$main_tab %||% "Table Intro", "Table Intro")) {
+        intro_playing(FALSE)
+        return()
+      }
+      if (nrow(intro_players) == 0) {
+        intro_playing(FALSE)
+        return()
+      }
+
+      idx <- isolate(intro_active_index())
+      if (is.na(idx)) {
+        idx <- 1L
+        intro_active_index(idx)
+      }
+      idx <- max(1L, min(as.integer(idx), nrow(intro_players)))
+      player <- intro_players[idx, , drop = FALSE]
+
+      advance_key <- paste(idx, as_scalar_chr(player$player_id, ""), sep = ":")
+      if (!identical(advance_key, last_intro_advance_key())) {
+        comment <- intro_comment_for_player(player, intro_chatter)
+        current_intro_comment(comment)
+        last_intro_advance_key(advance_key)
+
+        speak_broadcast_announcement(intro_announcement_text(player), queue = TRUE)
+        if (nzchar(comment)) {
+          play_broadcast_sound("chatter")
+          speak_broadcast_chatter(
+            text = comment,
+            speaker = as_scalar_chr(player$player_name, player$player_id %||% ""),
+            queue = TRUE
+          )
+        } else {
+          play_broadcast_sound("bot")
+        }
+
+        shiny::invalidateLater(intro_player_hold_ms(player, comment), session)
+        return()
+      }
+
+      last_intro_advance_key("")
+      if (idx >= nrow(intro_players)) {
+        intro_playing(FALSE)
+        show_broadcast_banner(
+          title = "Table Intro Complete",
+          text = "Players are seated",
+          subtitle = "Ready for tournament broadcast",
+          duration_ms = 1800L
+        )
+        return()
+      }
+
+      intro_active_index(idx + 1L)
+    })
+
     shiny::observeEvent(input$pause_replay, {
       is_playing(FALSE)
+      last_replay_advance_key("")
     })
 
     shiny::observeEvent(input$overview_pause, {
@@ -2337,6 +2809,7 @@ run_viewer_app <- function(log_data = NULL) {
 
     shiny::observeEvent(input$reset_replay, {
       is_playing(FALSE)
+      last_replay_advance_key("")
       shiny::updateSelectInput(session, "hand_index", selected = first_hand_choice)
       if (length(current_snapshots()) > 0) {
         shiny::updateSliderInput(session, "step_index", value = 1)
@@ -2353,6 +2826,7 @@ run_viewer_app <- function(log_data = NULL) {
 
     shiny::observeEvent(input$next_step, {
       is_playing(FALSE)
+      last_replay_advance_key("")
       snaps <- current_snapshots()
       if (length(snaps) == 0) {
         return()
@@ -2364,6 +2838,7 @@ run_viewer_app <- function(log_data = NULL) {
 
     shiny::observeEvent(input$next_hand, {
       is_playing(FALSE)
+      last_replay_advance_key("")
       hand_idx <- selected_hand_index()
       if (!is.na(hand_idx) && hand_idx < length(replay$hand_log)) {
         shiny::updateSelectInput(session, "hand_index", selected = as.character(hand_idx + 1L))
@@ -2386,9 +2861,22 @@ run_viewer_app <- function(log_data = NULL) {
         delay_ms <- 5000L
       }
 
-      shiny::invalidateLater(delay_ms, session)
-
       current_idx <- isolate(input$step_index %||% 1L)
+      current_idx <- max(1L, min(as.integer(current_idx), length(snaps)))
+      snap <- snaps[[current_idx]]
+      if (isTRUE(isolate(input$broadcast_mode %||% FALSE)) &&
+          isTRUE(isolate(input$broadcast_speak_chatter %||% TRUE))) {
+        delay_ms <- max(delay_ms, snapshot_speech_hold_ms(current_hand(), snap))
+      }
+
+      advance_key <- paste(selected_hand_index(), current_idx, delay_ms, sep = ":")
+      if (!identical(advance_key, last_replay_advance_key())) {
+        last_replay_advance_key(advance_key)
+        shiny::invalidateLater(delay_ms, session)
+        return()
+      }
+
+      last_replay_advance_key("")
       if (current_idx >= length(snaps)) {
         if (isTRUE(input$broadcast_mode %||% FALSE) &&
             !is.na(isolate(broadcast_feature_hand())) &&
@@ -2440,6 +2928,17 @@ run_viewer_app <- function(log_data = NULL) {
         }
       }
 
+      if (identical(as_scalar_chr(snap$snapshot_type, ""), "hand_end")) {
+        key <- paste(selected_hand_index(), as.integer(input$step_index %||% NA_integer_), "winner", sep = ":")
+        if (!identical(key, last_winner_announcement_key())) {
+          announcement <- winner_announcement_text(current_hand())
+          if (nzchar(announcement)) {
+            last_winner_announcement_key(key)
+            speak_broadcast_announcement(announcement)
+          }
+        }
+      }
+
       if (!identical(as_scalar_chr(snap$snapshot_type, ""), "elimination")) {
         return()
       }
@@ -2451,6 +2950,7 @@ run_viewer_app <- function(log_data = NULL) {
 
       last_elimination_sound_key(key)
       play_broadcast_sound("elimination")
+      speak_broadcast_announcement(elimination_announcement_text(snap, current_hand()))
     }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$main_tab, {
@@ -2463,6 +2963,10 @@ run_viewer_app <- function(log_data = NULL) {
       }
       if (identical(current_tab, "Overview") && isTRUE(resume_overview_after_feature())) {
         resume_overview_after_feature(FALSE)
+        is_overview_playing(TRUE)
+      }
+      if (identical(current_tab, "Overview") && isTRUE(resume_overview_after_intro())) {
+        resume_overview_after_intro(FALSE)
         is_overview_playing(TRUE)
       }
     }, ignoreInit = TRUE)
@@ -2749,10 +3253,20 @@ run_viewer_app <- function(log_data = NULL) {
       last_seen_broadcast_level(current_level)
       last_elimination_sound_key("")
       last_chatter_sound_key("")
+      last_winner_announcement_key("")
+      last_replay_advance_key("")
 
       snaps <- current_snapshots()
       if (length(snaps) > 0) {
         shiny::updateSliderInput(session, "step_index", value = 1, min = 1, max = length(snaps))
+      }
+      pending_feature <- pending_feature_hand_start()
+      if (!is.na(pending_feature) && identical(as.integer(pending_feature), as.integer(hand_idx))) {
+        pending_feature_hand_start(NA_integer_)
+        shiny::updateTabsetPanel(session, "main_tab", selected = "Hand Replay")
+        if (length(snaps) > 0) {
+          is_playing(TRUE)
+        }
       }
       if (!isTRUE(is_playing())) {
         is_playing(FALSE)
@@ -2761,6 +3275,316 @@ run_viewer_app <- function(log_data = NULL) {
   }
 
   shiny::shinyApp(ui = ui, server = server)
+}
+
+estimate_broadcast_runtime <- function(log_data,
+                                       overview_replay_speed = c("fast", "standard", "slow"),
+                                       replay_speed = c("standard", "slow", "fast"),
+                                       speak_chatter = TRUE,
+                                       include_speech_padding = TRUE,
+                                       seconds_per_word = 0.36,
+                                       speech_extra_seconds = 0.5,
+                                       feature_transition_seconds = 2.2,
+                                       return_per_hand = FALSE) {
+  `%||%` <- function(x, y) {
+    if (is.null(x)) y else x
+  }
+
+  as_scalar_chr <- function(x, default = "") {
+    if (is.null(x) || length(x) == 0 || is.na(x[1])) return(default)
+    as.character(x[1])
+  }
+
+  normalize_replay_data <- function(x) {
+    if (inherits(x, "tournament_state")) {
+      return(list(hand_log = x$hand_log %||% list()))
+    }
+    if (is.list(x) && !is.null(x$hand_log)) {
+      return(list(hand_log = x$hand_log %||% list()))
+    }
+    if (is.list(x) &&
+        length(x) > 0 &&
+        is.null(x$hand_log) &&
+        all(vapply(x, is.list, logical(1)))) {
+      return(list(hand_log = x))
+    }
+    stop("Expected a tournament_state, a replay list with $hand_log, or a raw hand_log list.")
+  }
+
+  speed_ms <- function(value, choices) {
+    if (is.numeric(value)) {
+      return(as.numeric(value[1]))
+    }
+    key <- tolower(as.character(value[1]))
+    choices[[key]] %||% choices[["standard"]]
+  }
+
+  get_hand_snapshots <- function(hand) {
+    snaps <- hand$state_snapshots %||% hand$snapshots %||% hand$hand_snapshots %||% NULL
+    if (is.null(snaps) || !is.list(snaps)) list() else snaps
+  }
+
+  player_name_lookup <- function(hand) {
+    lookup <- list()
+    sources <- c(
+      hand$starting_stack_summary %||% list(),
+      hand$ending_stack_summary %||% list(),
+      hand$stack_summary %||% list()
+    )
+    for (p in sources) {
+      pid <- as.character(p$player_id %||% "")
+      seat <- as.character(p$seat %||% "")
+      name <- as.character(p$player_name %||% p$name %||% pid)
+      if (!identical(pid, "")) lookup[[paste0("pid:", pid)]] <- name
+      if (!identical(seat, "")) lookup[[paste0("seat:", seat)]] <- name
+    }
+    lookup
+  }
+
+  build_replay_snapshots <- function(hand) {
+    snaps <- get_hand_snapshots(hand)
+    if (length(snaps) == 0) {
+      return(list())
+    }
+
+    elim_ids <- hand$eliminations_this_hand %||% character(0)
+    if (length(elim_ids) == 0) {
+      return(snaps)
+    }
+
+    last_snap <- snaps[[length(snaps)]]
+    if (identical(as_scalar_chr(last_snap$snapshot_type, ""), "elimination")) {
+      return(snaps)
+    }
+
+    elim_snap <- last_snap
+    elim_snap$snapshot_type <- "elimination"
+    elim_snap$step <- as.numeric(last_snap$step %||% length(snaps)) + 1
+    c(snaps, list(elim_snap))
+  }
+
+  winner_display_data <- function(hand) {
+    winners <- hand$winners %||% list()
+    if (!is.list(winners) || length(winners) == 0) {
+      return(NULL)
+    }
+
+    player_lookup <- player_name_lookup(hand)
+    winner_names <- character(0)
+    winner_amounts <- numeric(0)
+
+    for (w in winners) {
+      if (identical(w$win_type %||% "", "win_by_folds")) {
+        pid_key <- paste0("pid:", as.character(w$player_id %||% ""))
+        seat_key <- paste0("seat:", as.character(w$seat %||% ""))
+        name <- player_lookup[[pid_key]] %||% player_lookup[[seat_key]] %||% paste0("Seat ", as.character(w$seat %||% "?"))
+        winner_names <- c(winner_names, name)
+        winner_amounts <- c(winner_amounts, as.numeric(w$amount %||% NA_real_))
+      }
+      if (identical(w$win_type %||% "", "showdown_pot_award")) {
+        seats <- as.character(w$winner_seats %||% character(0))
+        payouts <- w$payouts %||% numeric(0)
+        for (seat in seats) {
+          name <- player_lookup[[paste0("seat:", seat)]] %||% paste0("Seat ", seat)
+          winner_names <- c(winner_names, name)
+          winner_amounts <- c(winner_amounts, as.numeric(payouts[[seat]] %||% NA_real_))
+        }
+      }
+    }
+
+    if (length(winner_names) == 0) {
+      return(NULL)
+    }
+
+    amount_by_name <- tapply(
+      ifelse(is.na(winner_amounts), 0, winner_amounts),
+      winner_names,
+      sum
+    )
+    list(names = names(amount_by_name), amounts = as.numeric(amount_by_name))
+  }
+
+  word_count <- function(text) {
+    text <- trimws(gsub("\\s+", " ", as.character(text %||% "")))
+    if (!nzchar(text)) return(0L)
+    length(strsplit(text, "\\s+")[[1]])
+  }
+
+  announcement_words <- function(hand, has_elimination) {
+    total <- 0L
+    winner_info <- winner_display_data(hand)
+    if (!is.null(winner_info)) {
+      payout_text <- paste(
+        vapply(seq_along(winner_info$names), function(i) {
+          amt <- winner_info$amounts[i]
+          if (!is.na(amt) && amt > 0) paste0(winner_info$names[i], " won ", amt, " chips") else winner_info$names[i]
+        }, character(1)),
+        collapse = ". "
+      )
+      total <- total + word_count(paste("Hand Winner.", payout_text))
+    }
+    if (isTRUE(has_elimination)) {
+      elim_ids <- hand$eliminations_this_hand %||% character(0)
+      lookup <- player_name_lookup(hand)
+      elim_names <- vapply(elim_ids, function(pid) lookup[[paste0("pid:", pid)]] %||% pid, character(1))
+      total <- total + word_count(paste(
+        if (length(elim_names) > 1) "Players Eliminated." else "Player Eliminated.",
+        paste(elim_names, collapse = ", "),
+        "Tournament life ends here."
+      ))
+    }
+    total
+  }
+
+  chatter_words <- function(hand) {
+    actions <- hand$action_history %||% list()
+    if (!is.list(actions) || length(actions) == 0) {
+      return(0L)
+    }
+    sum(vapply(actions, function(a) {
+      chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = " ")
+      chatter <- sub("^[[:alnum:] ._'?-]{1,45}:\\s*", "", chatter)
+      word_count(chatter)
+    }, integer(1)))
+  }
+
+  snapshot_speech_words <- function(hand, snapshot) {
+    words <- 0L
+    action_history <- hand$action_history %||% list()
+    action_count <- as.integer(snapshot$action_count %||% 0L)
+    action_count <- max(0L, min(action_count, length(action_history)))
+    if (action_count > 0L) {
+      action <- action_history[[action_count]]
+      chatter <- paste(trimws(as.character(action$chatter %||% action$table_talk %||% "")), collapse = " ")
+      chatter <- sub("^[[:alnum:] ._'?-]{1,45}:\\s*", "", chatter)
+      if (nzchar(trimws(chatter))) {
+        speaker <- as_scalar_chr(action$player_name, action$player_id %||% "")
+        words <- words + word_count(if (nzchar(speaker)) paste(speaker, "says:", chatter) else chatter)
+      }
+    }
+
+    snap_type <- as_scalar_chr(snapshot$snapshot_type, "")
+    if (identical(snap_type, "hand_end")) {
+      words <- words + announcement_words(hand, FALSE)
+    }
+    if (identical(snap_type, "elimination")) {
+      elim_ids <- hand$eliminations_this_hand %||% character(0)
+      lookup <- player_name_lookup(hand)
+      elim_names <- vapply(elim_ids, function(pid) lookup[[paste0("pid:", pid)]] %||% pid, character(1))
+      words <- words + word_count(paste(
+        if (length(elim_names) > 1) "Players Eliminated." else "Player Eliminated.",
+        paste(elim_names, collapse = ", "),
+        "Tournament life ends here."
+      ))
+    }
+
+    words
+  }
+
+  speech_seconds_for_words <- function(words) {
+    if (!isTRUE(include_speech_padding) || !isTRUE(speak_chatter) || words <= 0L) {
+      return(0)
+    }
+    words * seconds_per_word + speech_extra_seconds
+  }
+
+  replay <- normalize_replay_data(log_data)
+  hand_log <- replay$hand_log %||% list()
+  n_hands <- length(hand_log)
+  if (n_hands == 0) {
+    out <- list(
+      total_seconds = 0,
+      total_minutes = 0,
+      total_hms = "00:00:00",
+      hands = 0,
+      featured_hands = 0,
+      replay_steps = 0,
+      elimination_hands = 0,
+      assumptions = list()
+    )
+    class(out) <- "broadcast_runtime_estimate"
+    return(out)
+  }
+
+  overview_ms <- speed_ms(overview_replay_speed, c(slow = 2000, standard = 1000, fast = 250))
+  replay_ms <- speed_ms(replay_speed, c(slow = 3000, standard = 1500, fast = 100))
+
+  per_hand <- do.call(rbind, lapply(seq_along(hand_log), function(i) {
+    hand <- hand_log[[i]]
+    snaps <- build_replay_snapshots(hand)
+    n_steps <- length(snaps)
+    featured <- isTRUE(hand$for_tv)
+    eliminated <- length(hand$eliminations_this_hand %||% character(0)) > 0
+    words <- if (featured && isTRUE(speak_chatter)) chatter_words(hand) else 0L
+    announcer_words <- if (featured && isTRUE(speak_chatter)) announcement_words(hand, eliminated) else 0L
+
+    overview_seconds <- overview_ms / 1000
+    feature_seconds <- if (featured) {
+      step_seconds <- if (n_steps > 0) {
+        vapply(snaps, function(snapshot) {
+          max(replay_ms / 1000, speech_seconds_for_words(snapshot_speech_words(hand, snapshot)))
+        }, numeric(1))
+      } else {
+        numeric(0)
+      }
+      feature_transition_seconds + sum(step_seconds)
+    } else {
+      0
+    }
+
+    data.frame(
+      hand_index = i,
+      hand_number = as.integer(hand$hand_number %||% i),
+      for_tv = featured,
+      steps = n_steps,
+      eliminated = eliminated,
+      chatter_words = words,
+      announcer_words = announcer_words,
+      estimated_seconds = overview_seconds + feature_seconds,
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  total_seconds <- sum(per_hand$estimated_seconds, na.rm = TRUE)
+  h <- floor(total_seconds / 3600)
+  m <- floor((total_seconds %% 3600) / 60)
+  s <- round(total_seconds %% 60)
+
+  out <- list(
+    total_seconds = total_seconds,
+    total_minutes = total_seconds / 60,
+    total_hms = sprintf("%02d:%02d:%02d", h, m, s),
+    hands = n_hands,
+    featured_hands = sum(per_hand$for_tv, na.rm = TRUE),
+    replay_steps = sum(per_hand$steps[per_hand$for_tv], na.rm = TRUE),
+    elimination_hands = sum(per_hand$eliminated, na.rm = TRUE),
+    assumptions = list(
+      overview_replay_speed_ms = overview_ms,
+      featured_hand_replay_speed_ms = replay_ms,
+      feature_transition_seconds = feature_transition_seconds,
+      speak_chatter = isTRUE(speak_chatter),
+      seconds_per_word = seconds_per_word,
+      speech_extra_seconds = speech_extra_seconds,
+      speech_padding_included = isTRUE(include_speech_padding)
+    )
+  )
+  if (isTRUE(return_per_hand)) {
+    out$per_hand <- per_hand
+  }
+  class(out) <- "broadcast_runtime_estimate"
+  out
+}
+
+print.broadcast_runtime_estimate <- function(x, ...) {
+  cat("Estimated broadcast runtime:", x$total_hms, "\n")
+  cat("  Hands:", x$hands, "\n")
+  cat("  Featured hands:", x$featured_hands, "\n")
+  cat("  Featured replay steps:", x$replay_steps, "\n")
+  cat("  Elimination hands:", x$elimination_hands, "\n")
+  cat("  Assumptions: overview", x$assumptions$overview_replay_speed_ms, "ms;",
+      "feature replay", x$assumptions$featured_hand_replay_speed_ms, "ms;",
+      "speech", if (isTRUE(x$assumptions$speech_padding_included)) "included" else "not included", "\n")
+  invisible(x)
 }
 
 

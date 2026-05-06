@@ -98,11 +98,24 @@ tara_bot <- function(bot_input) {
   # YOUR STRATEGY GOES BELOW
   ##########################################################
 
+  tara_says <- function(lines, chance = 0.055) {
+    if (runif(1) < chance) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   # Example beginner strategy:
   # check if possible, otherwise call, otherwise fold
 
   # high cards: always call
   if (hand_strength >= 25) {
+    tara_says(c(
+      "Tara: I was not going to say anything, but these cards are kind of sunny.",
+      "Tara: Quietly calling. Like, beach-volume quiet.",
+      "Tara: The math says this wave is rideable.",
+      "Tara: I am still not talking. This is just a small footnote.",
+      "Tara: Jaymon and I are communicating entirely through not talking."
+    ))
     if("call" %in% legal_types) return(list(type = "call"))
     if("check" %in% legal_types) return(list(type = "check"))
   }
@@ -110,9 +123,22 @@ tara_bot <- function(bot_input) {
   # medium cards: call 20% of the time
   if (hand_strength >= 18) {
     if (runif(1) < 0.5) {
+      tara_says(c(
+        "Tara: I have a theorem about not making eye contact with this pot.",
+        "Tara: Small call, then back to sunshine.",
+        "Tara: I am saying almost nothing, mathematically.",
+        "Tara: This hand has mild beach energy.",
+        "Tara: Jaymon probably heard that silence too."
+      ))
       if("call" %in% legal_types) return(list(type = "call"))
       if("check" %in% legal_types) return(list(type = "check"))
     } else {
+      tara_says(c(
+        "Tara: Quiet fold. Very on brand.",
+        "Tara: I am going back to tanning and topology.",
+        "Tara: No comment. Which is the comment.",
+        "Tara: This wave closed out."
+      ))
       if ("fold" %in% legal_types) return(list(type = "fold"))
     }
   }
@@ -120,11 +146,24 @@ tara_bot <- function(bot_input) {
 
   # low cards: fold
   if ("fold" %in% legal_types) {
+    tara_says(c(
+      "Tara: I could say something, but the fold says it for me.",
+      "Tara: Low cards. High SPF. I am out.",
+      "Tara: Silent surfer theorem: fold bad hands.",
+      "Tara: Not every beach day needs a speech.",
+      "Tara: Jaymon, no comment. Respectfully."
+    ))
     return(list(type = "fold"))
   }
 
 
   # Fallback
+  tara_says(c(
+    "Tara: Fallback action. Still barely talking.",
+    "Tara: I will let the cards speak. Softly.",
+    "Tara: The limit exists, and it is quiet.",
+    "Tara: Jaymon and I have a whole conversation in the null space."
+  ))
   return(choose_preferred_action(bot_input, c("check", "call", "fold")))
 }
 

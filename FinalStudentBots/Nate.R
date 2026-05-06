@@ -19,11 +19,22 @@ nate_bot <- function(bot_input) {
     return(max(min(amt, stack), bot_input$min_bet))
   }
 
+  bill_says <- function(lines) {
+    if (runif(1) < 0.35) {
+      cat(sample(lines, size = 1), "\n")
+    }
+  }
+
   # 2. PREFLOP: THE TAX
   # We make it expensive for them to exist.
   if (identical(street, "preflop")) {
     if (max(vals) >= 13 || length(unique(vals)) == 1) {
       if (bot_has_action(bot_input, "raise")) {
+        bill_says(c(
+          "Bill: Found a monster. Starting the war.",
+          "Bill: Mady, this one is for the data set.",
+          "Bill: Mady, try not to be too impressed. Or do. That is fine."
+        ))
         return(list(type = "raise", amount = clamp_bet(bot_input$min_bet * 5))) # 5x Raise!
       }
     }
@@ -40,6 +51,11 @@ nate_bot <- function(bot_input) {
   if (identical(street, "river")) {
     if (has_strong_pair || is_monster) {
       if (bot_has_action(bot_input, "bet") || bot_has_action(bot_input, "raise")) {
+        bill_says(c(
+          "Bill: THE WAR IS ON. Overbetting for max value.",
+          "Bill: Mady, this is what a not-so-secret crush looks like in chip form.",
+          "Bill: Jake is old news. This river is current events."
+        ))
         return(list(type = "raise", amount = stack)) # ALL IN
       }
     }
@@ -51,11 +67,27 @@ nate_bot <- function(bot_input) {
   if (has_strong_pair || is_monster) {
     # Small "Probing" bet to build the pot slowly
     if (bot_has_action(bot_input, "bet")) {
+      if (is_monster) {
+        bill_says(c(
+          "Bill: THE WAR IS ON. Overbetting for max value.",
+          "Bill: Mady, please update your model to include romantic pressure."
+        ))
+      } else {
+        bill_says(c(
+          "Bill: Controlling the pot with a solid hand.",
+          "Bill: Mady, this is responsible value. Character growth."
+        ))
+      }
       return(list(type = "bet", amount = clamp_bet(floor(pot * 0.4))))
     }
     return(choose_preferred_action(bot_input, c("call", "check")))
   }
 
   # 4. THE NO-BLUFF POLICY
+  bill_says(c(
+    "Bill: No war today. Folding.",
+    "Bill: Mady, I am folding responsibly. Please note the maturity.",
+    "Bill: I fold, but my crush on Mady remains aggressively uncapped."
+  ))
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }

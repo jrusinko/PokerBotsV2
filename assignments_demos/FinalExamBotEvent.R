@@ -391,11 +391,11 @@ demo_engine_single_hand_verbose <- function(
 }
 
 blinds_Main <- data.frame(
-  level = 1:20,
-  small_blind = c(100, 200, 200, 300, 300,400,500,600,1000,1000,1000,1500,2000,3000,3000,4000,5000,6000,10000,10000),
-  big_blind = c(200, 300, 400, 500, 600,800,1000,1200,1500,2000,2500,3000,4000,5000,6000,8000,10000,12000,15000,20000),
-  ante = c(20, 30, 40, 50, 60,80,100,120,150,200,250,300,400,500,600,800,1000,1200,1500,2000),
-  hands_per_level = rep(80,20))
+  level = 1:26,
+  small_blind = c(100, 200, 200, 300, 300,400,500,600,1000,1000,1000,1500,2000,3000,3000,4000,5000,6000,10000,10000,20000,20000,30000,30000,40000,50000),
+  big_blind = c(200, 300, 400, 500, 600,800,1000,1200,1500,2000,2500,3000,4000,5000,6000,8000,10000,12000,15000,20000,30000,40000,50000,60000,80000,100000),
+  ante = c(20, 30, 40, 50, 60,80,100,120,150,200,250,300,400,500,600,800,1000,1200,1500,2000,3000,4000,5000,6000,8000,10000),
+  hands_per_level = rep(75,26))
 
 demo_tournament_run <- function(
     bot_fns = list(random_bot, aggressive_bot, simple_preflop_strength_bot, always_call_bot,
@@ -870,6 +870,13 @@ tournFinal<-demo_tournament_run(
 
 
 # Televised Schedule ------------------------------------------------------
+
+estimate_broadcast_runtime(tournT1)
+estimate_broadcast_runtime(tournT2)
+estimate_broadcast_runtime(tournT3)
+estimate_broadcast_runtime(tournR2T1)
+estimate_broadcast_runtime(tournR2T2)
+estimate_broadcast_runtime(tournFinal)
 
 
 run_viewer_app(tournT1)

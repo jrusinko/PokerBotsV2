@@ -638,7 +638,9 @@ hawkins_bot <- function(bot_input) {
       "Hawkins Bot: Confidence is cheaper than chips, but I brought both.",
       "Hawkins Bot: I came for edges, not explanations.",
       "Hawkins Bot: That call looks brave from over here.",
-      "Hawkins Bot: The pressure is complimentary; the chips are not."
+      "Hawkins Bot: The pressure is complimentary; the chips are not.",
+      "Hawkins Bot: Siena knows a winning side story when she sees one.",
+      "Hawkins Bot: Siena, keep the alliance quiet. I have an image to maintain."
     )
     cat(sample(lines, size = 1), "\n")
   }
