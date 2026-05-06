@@ -1178,6 +1178,15 @@ apply_action <- function(tournament_state, action) {
     list(player = validate_player_state(player), add_amount = add_amount)
   }
 
+  add_chatter_to_action_record <- function(record) {
+    chatter <- action$chatter %||% action$table_talk %||% action$message %||% ""
+    chatter <- paste(trimws(as.character(chatter)), collapse = "\n")
+    if (nzchar(chatter)) {
+      record$chatter <- chatter
+    }
+    record
+  }
+
   reset_other_players_acted_flags_after_aggression <- function(players, aggressor_seat) {
     for (i in seq_along(players)) {
       p <- players[[i]]
@@ -1211,14 +1220,14 @@ apply_action <- function(tournament_state, action) {
     player$acted_this_round <- TRUE
     players[[acting_idx]] <- validate_player_state(player)
 
-    hand_state <- append_action_to_hand(hand_state, list(
+    hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
       type = "fold",
       player_id = player$player_id,
       player_name = player$name,
       seat = player$seat,
       street = hand_state$street,
       amount = 0
-    ))
+    )))
   }
 
   else if (action_type == "check") {
@@ -1229,14 +1238,14 @@ apply_action <- function(tournament_state, action) {
     player$acted_this_round <- TRUE
     players[[acting_idx]] <- validate_player_state(player)
 
-    hand_state <- append_action_to_hand(hand_state, list(
+    hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
       type = "check",
       player_id = player$player_id,
       player_name = player$name,
       seat = player$seat,
       street = hand_state$street,
       amount = 0
-    ))
+    )))
   }
 
   else if (action_type == "call") {
@@ -1248,14 +1257,14 @@ apply_action <- function(tournament_state, action) {
     players[[acting_idx]] <- player
     hand_state$pot <- hand_state$pot + call_amount
 
-    hand_state <- append_action_to_hand(hand_state, list(
+    hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
       type = "call",
       player_id = player$player_id,
       player_name = player$name,
       seat = player$seat,
       street = hand_state$street,
       amount = call_amount
-    ))
+    )))
   }
 
   else if (action_type == "bet") {
@@ -1284,14 +1293,14 @@ apply_action <- function(tournament_state, action) {
 
     players <- reset_other_players_acted_flags_after_aggression(players, player$seat)
 
-    hand_state <- append_action_to_hand(hand_state, list(
+    hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
       type = "bet",
       player_id = player$player_id,
       player_name = player$name,
       seat = player$seat,
       street = hand_state$street,
       amount = bet_total
-    ))
+    )))
   }
 
   else if (action_type == "raise") {
@@ -1324,14 +1333,14 @@ apply_action <- function(tournament_state, action) {
 
     players <- reset_other_players_acted_flags_after_aggression(players, player$seat)
 
-    hand_state <- append_action_to_hand(hand_state, list(
+    hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
       type = "raise",
       player_id = player$player_id,
       player_name = player$name,
       seat = player$seat,
       street = hand_state$street,
       amount = raise_total_to
-    ))
+    )))
   }
 
   else if (action_type == "all_in") {
@@ -1355,14 +1364,14 @@ apply_action <- function(tournament_state, action) {
 
       players <- reset_other_players_acted_flags_after_aggression(players, player$seat)
 
-      hand_state <- append_action_to_hand(hand_state, list(
+      hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
         type = "all_in_bet",
         player_id = player$player_id,
         player_name = player$name,
         seat = player$seat,
         street = hand_state$street,
         amount = total_to
-      ))
+      )))
     }
 
     # Case 2: all-in facing a bet
@@ -1377,39 +1386,39 @@ apply_action <- function(tournament_state, action) {
 
           players <- reset_other_players_acted_flags_after_aggression(players, player$seat)
 
-          hand_state <- append_action_to_hand(hand_state, list(
+          hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
             type = "all_in_raise",
             player_id = player$player_id,
             player_name = player$name,
             seat = player$seat,
             street = hand_state$street,
             amount = total_to
-          ))
+          )))
         } else {
           # Short all-in: increases current bet for matching purposes,
           # but does not reopen action under standard no-limit rules.
           hand_state$current_bet <- total_to
 
           # Do not reset others' acted flags
-          hand_state <- append_action_to_hand(hand_state, list(
+          hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
             type = "all_in_short",
             player_id = player$player_id,
             player_name = player$name,
             seat = player$seat,
             street = hand_state$street,
             amount = total_to
-          ))
+          )))
         }
       } else {
         # All-in for less than or equal to call amount: effectively a call for less
-        hand_state <- append_action_to_hand(hand_state, list(
+        hand_state <- append_action_to_hand(hand_state, add_chatter_to_action_record(list(
           type = "all_in_call",
           player_id = player$player_id,
           player_name = player$name,
           seat = player$seat,
           street = hand_state$street,
           amount = all_in_additional
-        ))
+        )))
       }
     }
   }
@@ -2341,12 +2350,30 @@ safe_get_bot_action <- function(
   }
 
   bot_input <- build_bot_input(tournament_state)
+  bot_chatter <- character(0)
+
+  attach_bot_chatter <- function(bot_action) {
+    chatter <- paste(trimws(bot_chatter[nzchar(trimws(bot_chatter))]), collapse = "\n")
+    if (nzchar(chatter) && is.list(bot_action) && is.null(bot_action$chatter)) {
+      bot_action$chatter <- chatter
+    }
+    bot_action
+  }
 
   bot_action <- tryCatch(
-    with_decision_clock(
-      player$bot_fn(bot_input),
-      timeout_sec = decision_timeout_sec
-    ),
+    {
+      action <- NULL
+      bot_chatter <- utils::capture.output(
+        {
+          action <- with_decision_clock(
+            player$bot_fn(bot_input),
+            timeout_sec = decision_timeout_sec
+          )
+        },
+        type = "output"
+      )
+      action
+    },
     error = function(e) {
       NULL
     }
@@ -2354,7 +2381,7 @@ safe_get_bot_action <- function(
 
   # Defensive fallback if bot output is malformed
   if (!is.list(bot_action) || is.null(bot_action$type)) {
-    return(passive_fallback_action(legal))
+    return(attach_bot_chatter(passive_fallback_action(legal)))
   }
 
   action_type <- as.character(bot_action$type)[1]
@@ -2366,21 +2393,87 @@ safe_get_bot_action <- function(
 
   # Fallback if illegal type
   if (!(action_type %in% legal$legal_action_types) && !aggressive_all_in_candidate) {
-    return(passive_fallback_action(legal))
+    return(attach_bot_chatter(passive_fallback_action(legal)))
   }
 
   bot_action <- sanitize_aggressive_action_amount(bot_action, legal, player)
   action_type <- as.character(bot_action$type)[1]
 
   if (!(action_type %in% legal$legal_action_types)) {
-    return(passive_fallback_action(legal))
+    return(attach_bot_chatter(passive_fallback_action(legal)))
   }
 
-  bot_action
+  attach_bot_chatter(bot_action)
 }
 # =========================
 # Play one full hand
 # =========================
+
+describe_hand_action_limit_state <- function(tournament_state, action_counter, max_actions) {
+  hand_state <- tournament_state$current_hand
+  players <- tournament_state$players
+
+  acting_player <- NULL
+  if (!is.null(hand_state) && !is.na(hand_state$acting_seat %||% NA_integer_)) {
+    acting_idx <- get_player_index_by_seat(players, hand_state$acting_seat)
+    if (!is.na(acting_idx)) {
+      acting_player <- players[[acting_idx]]
+    }
+  }
+
+  player_summary <- paste(
+    vapply(players, function(p) {
+      if (!inherits(p, "player_state")) return("invalid-player")
+      paste0(
+        p$name,
+        "(seat=", p$seat,
+        ",stack=", p$stack,
+        ",status=", p$status,
+        ",folded=", p$folded,
+        ",all_in=", p$all_in,
+        ",acted=", p$acted_this_round,
+        ",ctr=", p$committed_this_round,
+        ")"
+      )
+    }, character(1)),
+    collapse = " | "
+  )
+
+  action_history <- hand_state$action_history %||% list()
+  recent_actions <- tail(action_history, 12L)
+  recent_summary <- if (length(recent_actions) == 0) {
+    "(none)"
+  } else {
+    paste(
+      vapply(recent_actions, function(a) {
+        paste0(
+          a$type %||% "NA",
+          "@seat", a$seat %||% a$winner_seat %||% "NA",
+          ":amt=", a$amount %||% "NA",
+          ":street=", a$street %||% "NA"
+        )
+      }, character(1)),
+      collapse = " | "
+    )
+  }
+
+  paste0(
+    "Maximum action count exceeded while playing hand.\n",
+    "Actions attempted: ", action_counter, " / ", max_actions, "\n",
+    "Tournament: ", tournament_state$tournament_id %||% "NA",
+    " | hand_number: ", hand_state$hand_number %||% "NA",
+    " | hand_id: ", hand_state$hand_id %||% "NA",
+    " | level: ", tournament_state$level %||% "NA", "\n",
+    "Street: ", hand_state$street %||% "NA",
+    " | acting_seat: ", hand_state$acting_seat %||% "NA",
+    " | acting_player: ", if (!is.null(acting_player)) acting_player$name else "NA",
+    " | current_bet: ", hand_state$current_bet %||% "NA",
+    " | pot: ", hand_state$pot %||% "NA", "\n",
+    "Players: ", player_summary, "\n",
+    "Recent actions: ", recent_summary, "\n",
+    "To debug this exact hand, rerun the tournament with the same rng_seed and set verbose = TRUE or show_hand_details = TRUE."
+  )
+}
 
 play_current_hand <- function(tournament_state, max_actions = 1000L) {
   if (!inherits(tournament_state, "tournament_state")) {
@@ -2435,7 +2528,7 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     }
 
     if (action_counter >= max_actions) {
-      stop("Maximum action count exceeded while playing hand.")
+      stop(describe_hand_action_limit_state(tournament_state, action_counter, max_actions), call. = FALSE)
     }
 
     # If showdown is required, resolve it

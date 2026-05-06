@@ -68,6 +68,55 @@ compute_total_pot_awarded <- function(hand) {
   total
 }
 
+compute_stack_change_impact <- function(hand, major_stack_change_pct = 0.25) {
+  deltas <- hand$stack_deltas %||% list()
+
+  if (length(deltas) == 0) {
+    return(list(
+      max_abs_stack_delta = 0,
+      max_stack_delta_pct = 0,
+      major_stack_change_ids = character(0)
+    ))
+  }
+
+  delta_df <- do.call(rbind, lapply(deltas, function(d) {
+    starting_stack <- nz_scalar_num(d$starting_stack, NA_real_)
+    delta <- nz_scalar_num(d$delta, 0)
+    pct <- if (is.finite(starting_stack) && starting_stack > 0) {
+      abs(delta) / starting_stack
+    } else {
+      0
+    }
+
+    data.frame(
+      player_id = nz_scalar_chr(d$player_id, ""),
+      abs_delta = abs(delta),
+      delta_pct = pct,
+      stringsAsFactors = FALSE
+    )
+  }))
+
+  if (is.null(delta_df) || nrow(delta_df) == 0) {
+    return(list(
+      max_abs_stack_delta = 0,
+      max_stack_delta_pct = 0,
+      major_stack_change_ids = character(0)
+    ))
+  }
+
+  major_ids <- delta_df$player_id[
+    nzchar(delta_df$player_id) &
+      is.finite(delta_df$delta_pct) &
+      delta_df$delta_pct >= major_stack_change_pct
+  ]
+
+  list(
+    max_abs_stack_delta = max(delta_df$abs_delta, na.rm = TRUE),
+    max_stack_delta_pct = max(delta_df$delta_pct, na.rm = TRUE),
+    major_stack_change_ids = unique(major_ids)
+  )
+}
+
 compute_chip_leader_change <- function(hand) {
   starters <- hand$starting_stack_summary %||% list()
   enders <- hand$ending_stack_summary %||% hand$stack_summary %||% list()
@@ -258,6 +307,7 @@ estimate_low_equity_winner <- function(hand,
 extract_hand_features <- function(replay, hand_index,
                                   short_stack_bb = 10,
                                   double_up_factor = 2,
+                                  major_stack_change_pct = 0.25,
                                   strong_hand_category_min = 4L,
                                   equity_sims = 2000,
                                   low_equity_threshold = 0.35,
@@ -280,6 +330,10 @@ extract_hand_features <- function(replay, hand_index,
   eliminations_this_hand <- hand$eliminations_this_hand %||% character(0)
 
   chip_leader <- compute_chip_leader_change(hand)
+  stack_change <- compute_stack_change_impact(
+    hand = hand,
+    major_stack_change_pct = major_stack_change_pct
+  )
   short_stack_double_up_ids <- compute_short_stack_double_ups(
     hand = hand,
     short_stack_bb = short_stack_bb,
@@ -329,6 +383,11 @@ extract_hand_features <- function(replay, hand_index,
     showdown_players = length(showdown_strengths$showdown_player_ids),
     multiway_showdown = length(showdown_strengths$showdown_player_ids) >= 3L,
     total_pot_awarded = compute_total_pot_awarded(hand),
+    max_abs_stack_delta = as.numeric(stack_change$max_abs_stack_delta),
+    max_stack_delta_pct = as.numeric(stack_change$max_stack_delta_pct),
+    major_stack_change_count = length(stack_change$major_stack_change_ids),
+    had_major_stack_change = length(stack_change$major_stack_change_ids) > 0L,
+    major_stack_change_player_ids = paste(stack_change$major_stack_change_ids, collapse = ","),
     elimination_count = length(eliminations_this_hand),
     had_elimination = length(eliminations_this_hand) > 0L,
     chip_leader_changed = isTRUE(chip_leader$changed),
@@ -372,8 +431,8 @@ score_hand_interest <- function(features,
   reasons <- character(0)
   players_remaining <- suppressWarnings(as.numeric(features$players_remaining_start))
   all_in_count <- suppressWarnings(as.numeric(features$all_in_count))
-  total_pot_awarded <- suppressWarnings(as.numeric(features$total_pot_awarded))
-  big_blind <- suppressWarnings(as.numeric(features$big_blind))
+  max_stack_delta_pct <- suppressWarnings(as.numeric(features$max_stack_delta_pct))
+  major_stack_change_count <- suppressWarnings(as.numeric(features$major_stack_change_count))
   lowest_winner_equity <- suppressWarnings(as.numeric(features$lowest_winner_equity))
   strongest_losing_hand_category <- suppressWarnings(as.numeric(features$strongest_losing_hand_category))
   showdown_players <- suppressWarnings(as.numeric(features$showdown_players))
@@ -396,6 +455,23 @@ score_hand_interest <- function(features,
   if (isTRUE(features$chip_leader_changed)) {
     score <- score + 1.5
     reasons <- c(reasons, "chip leader changed")
+  }
+
+  if (isTRUE(features$had_major_stack_change)) {
+    if (!is.finite(major_stack_change_count)) {
+      major_stack_change_count <- 1
+    }
+
+    stack_swing_bonus <- if (is.finite(max_stack_delta_pct) && max_stack_delta_pct >= 1) {
+      3.5
+    } else if (is.finite(max_stack_delta_pct) && max_stack_delta_pct >= 0.5) {
+      3
+    } else {
+      2
+    }
+
+    score <- score + stack_swing_bonus + min(1, 0.5 * (major_stack_change_count - 1))
+    reasons <- c(reasons, "major stack swing")
   }
 
   if (isTRUE(features$had_first_time_winner)) {
@@ -460,26 +536,6 @@ score_hand_interest <- function(features,
     }
   }
 
-  if (is.finite(total_pot_awarded) && is.finite(big_blind) && big_blind > 0) {
-    pot_in_bb <- total_pot_awarded / big_blind
-    pot_bonus <- if (pot_in_bb >= 120) {
-      2.5
-    } else if (pot_in_bb >= 80) {
-      2
-    } else if (pot_in_bb >= 40) {
-      1.25
-    } else if (pot_in_bb >= 20) {
-      0.5
-    } else {
-      0
-    }
-
-    if (pot_bonus > 0) {
-      score <- score + pot_bonus
-      reasons <- c(reasons, "big pot")
-    }
-  }
-
   if (isTRUE(stage_weight) && is.finite(players_remaining) && players_remaining > 0) {
     stage_bonus <- if (players_remaining <= 3) {
       1.5
@@ -527,7 +583,10 @@ rank_interesting_hands <- function(replay, ...) {
   out
 }
 
-annotate_replay_for_tv <- function(replay, tv_threshold = 3, ...) {
+annotate_replay_for_tv <- function(replay,
+                                   tv_threshold = 3,
+                                   require_major_stack_change = TRUE,
+                                   ...) {
   if (is.null(replay$hand_log) || length(replay$hand_log) == 0) {
     return(replay)
   }
@@ -539,12 +598,18 @@ annotate_replay_for_tv <- function(replay, tv_threshold = 3, ...) {
 
   score_by_hand <- setNames(ranked$interest_score, as.character(ranked$hand_index))
   reasons_by_hand <- setNames(ranked$interest_reasons, as.character(ranked$hand_index))
+  major_stack_change_by_hand <- setNames(
+    ranked$had_major_stack_change %||% rep(FALSE, nrow(ranked)),
+    as.character(ranked$hand_index)
+  )
 
   for (i in seq_along(replay$hand_log)) {
     replay$hand_log[[i]]$interest_score <- as.numeric(score_by_hand[as.character(i)] %||% NA_real_)
     replay$hand_log[[i]]$interest_reasons <- as.character(reasons_by_hand[as.character(i)] %||% "")
+    replay$hand_log[[i]]$had_major_stack_change <- isTRUE(major_stack_change_by_hand[as.character(i)])
     replay$hand_log[[i]]$for_tv <- is.finite(replay$hand_log[[i]]$interest_score) &&
-      replay$hand_log[[i]]$interest_score >= tv_threshold
+      replay$hand_log[[i]]$interest_score >= tv_threshold &&
+      (!isTRUE(require_major_stack_change) || isTRUE(replay$hand_log[[i]]$had_major_stack_change))
   }
 
   replay

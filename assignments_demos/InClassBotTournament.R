@@ -419,7 +419,8 @@ demo_tournament_run <- function(
     show_hand_details = FALSE,
     hand_pause_mode = c("none", "street", "action"),
     pause_between_hands = FALSE,
-    stop_at_players = 1L
+    stop_at_players = 1L,
+    max_actions_per_hand = 1000L
 ) {
   hand_pause_mode <- match.arg(hand_pause_mode)
 
@@ -427,6 +428,11 @@ demo_tournament_run <- function(
     stop("`stop_at_players` must be a positive integer.")
   }
   stop_at_players <- as.integer(stop_at_players)
+
+  if (!is.numeric(max_actions_per_hand) || length(max_actions_per_hand) != 1 || is.na(max_actions_per_hand) || max_actions_per_hand < 1) {
+    stop("`max_actions_per_hand` must be a positive integer.")
+  }
+  max_actions_per_hand <- as.integer(max_actions_per_hand)
 
   if (!is.na(rng_seed)) {
     set.seed(as.integer(rng_seed))
@@ -501,7 +507,7 @@ demo_tournament_run <- function(
         pause_mode = hand_pause_mode
       )
     } else {
-      tourn <- play_current_hand(tourn)
+      tourn <- play_current_hand(tourn, max_actions = max_actions_per_hand)
     }
 
     tourn <- update_blind_level(tourn)

@@ -18,7 +18,7 @@ if (!exists("poker_load_all")) {
 
 poker_load_all()
 source("reference_bots/example_bots.R")
-
+source("reference_bots/GuestBots.R")
 
 demo_cards_and_hands_holdem <- function(n_players = 2) {
   showdown <- play_holdem_hand(n_players = n_players)
@@ -412,7 +412,8 @@ demo_tournament_run <- function(
     show_hand_details = FALSE,
     hand_pause_mode = c("none", "street", "action"),
     pause_between_hands = FALSE,
-    stop_at_players = 1L
+    stop_at_players = 1L,
+    max_actions_per_hand = 1000L
 ) {
   hand_pause_mode <- match.arg(hand_pause_mode)
 
@@ -420,6 +421,11 @@ demo_tournament_run <- function(
     stop("`stop_at_players` must be a positive integer.")
   }
   stop_at_players <- as.integer(stop_at_players)
+
+  if (!is.numeric(max_actions_per_hand) || length(max_actions_per_hand) != 1 || is.na(max_actions_per_hand) || max_actions_per_hand < 1) {
+    stop("`max_actions_per_hand` must be a positive integer.")
+  }
+  max_actions_per_hand <- as.integer(max_actions_per_hand)
 
   if (!is.na(rng_seed)) {
     set.seed(as.integer(rng_seed))
@@ -494,7 +500,7 @@ demo_tournament_run <- function(
         pause_mode = hand_pause_mode
       )
     } else {
-      tourn <- play_current_hand(tourn)
+      tourn <- play_current_hand(tourn, max_actions = max_actions_per_hand)
     }
 
     tourn <- update_blind_level(tourn)
@@ -723,16 +729,40 @@ source("poker_load_all.R")
 poker_load_all(include_demos = FALSE)
 
 source("assignments_demos/poker_demos.R")
-source("student_work/studentBots.R")
+bot_call_amount<-function(bot_input) {
+  max(0, as.numeric(bot_input$current_bet %||% 0) - as.numeric(bot_input$committed_this_round %||% 0))
+}
+
+source_final_student_bot_file<-function(path,envir = .GlobalEnv) {
+  exprs<-parse(path)
+  for (expr in exprs) {
+    if (!is.call(expr) || !as.character(expr[[1]]) %in% c("<-","=")) {
+      next
+    }
+
+    rhs<-expr[[3]]
+    if (is.call(rhs) && identical(as.character(rhs[[1]]),"function")) {
+      eval(expr,envir = envir)
+    }
+  }
+
+  invisible(path)
+}
+
+final_student_bot_files<-list.files("FinalStudentBots",pattern = "\\.R$",full.names = TRUE)
+for (bot_file in final_student_bot_files) {
+  source_final_student_bot_file(bot_file)
+}
+source("reference_bots/GuestBots.R")
 # Setup -------------------------------------------------------------------
 Botbots <- list(random_bot, aggressive_bot, simple_preflop_strength_bot, always_call_bot,strength_by_street_bot,passive_bot,mixed_bot,mixed_bot2,lab_bot,lab_bot_v2)
 Bot_names = c("Rando", "Aggro", "PrePlanner", "GetAlong","Da streets", "ScardyBot","Confused","MoreConfused","LabBot","LabBot2")
 
-studentBots <- list(jaymon_bot, joel_bot, Nikola_bot, mehdi_bot,nate_bot,mady_bot,tara_bot,lucy_bot,siena_bot,ruth_bot)
+studentBots <- list(jaymon_bot, joel_bot, Nikola_bot, mehdi_bot,nate_bot,mady_bot,tara_bot,lucy_bot,Siena_bot,ruth_bot)
 StudentNames<-c("Jaymon","Joel","Nikola","Mehdi","Nate","Mady","Tara","Lucy","Siena","Ruth")
 
-guestBots<- list(random_bot,random_bot,random_bot,random_bot,random_bot,random_bot,random_bot,random_bot,random_bot,random_bot)
-guestNames<- list("King Rikki","Hatch Bot","Gearan up to beat you","Sir Hu McBluff","Talmage Bot","Bot inSpector","Kahn you fold?","Fordeing Ahead","Maurice Hawkins","Shawn Deeb")
+guestBots<- list(king_bot,hatch_bot,gearan_bot,hu_bot,talmage_bot,spector_bot,khan_bot,forde_bot,hawkins_bot,biermann_bot)
+guestNames<- list("King Rikki","Hatch Bot","Gearan up to beat you","Sir Hu McBluff","Talmage Bot","Bot inSpector","Khan you fold?","Fordeing Ahead","Maurice Hawkins","Biermann")
 
 allBots<-c(Botbots,studentBots,guestBots)
 allNames<-c(Bot_names,StudentNames,guestNames)
@@ -834,7 +864,8 @@ tournFinal<-demo_tournament_run(
   player_names = participantNames,
   starting_stacks = participantStacks,
   max_hands = 2000,
-  verbose = FALSE
+  verbose = FALSE,
+  snapshot_mode = "key"
 )
 
 

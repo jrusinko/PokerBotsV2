@@ -216,6 +216,110 @@ get_demo_remaining_players <- function(tournament_state, bot_fns, player_names) 
   rownames(remaining) <- NULL
   remaining
 }
+
+thin_demo_hand_log <- function(
+    tournament_state,
+    snapshot_mode = c("full", "key", "final", "none"),
+    preserve_tv_hands = TRUE,
+    tv_threshold = 3,
+    major_stack_change_pct = 0.25,
+    require_major_stack_change = TRUE
+) {
+  snapshot_mode <- match.arg(snapshot_mode)
+
+  if (identical(snapshot_mode, "full")) {
+    return(tournament_state)
+  }
+
+  if (isTRUE(preserve_tv_hands) &&
+      exists("annotate_replay_for_tv", mode = "function") &&
+      length(tournament_state$hand_log %||% list()) > 0) {
+    has_tv_tags <- all(vapply(
+      tournament_state$hand_log,
+      function(hand) !is.null(hand$for_tv),
+      logical(1)
+    ))
+
+    if (!has_tv_tags) {
+      tournament_state <- tryCatch(
+        annotate_replay_for_tv(
+          tournament_state,
+          tv_threshold = tv_threshold,
+          major_stack_change_pct = major_stack_change_pct,
+          require_major_stack_change = require_major_stack_change,
+          include_equity = FALSE
+        ),
+        error = function(e) tournament_state
+      )
+    }
+  }
+
+  keep_snapshots <- function(snaps) {
+    if (is.null(snaps) || length(snaps) == 0) {
+      return(list())
+    }
+
+    if (identical(snapshot_mode, "none")) {
+      return(list())
+    }
+
+    snap_types <- vapply(
+      snaps,
+      function(s) as.character(s$snapshot_type %||% "")[1],
+      character(1)
+    )
+
+    if (identical(snapshot_mode, "final")) {
+      keep_idx <- which(snap_types %in% c("showdown", "hand_end", "elimination"))
+      if (length(keep_idx) == 0) {
+        keep_idx <- length(snaps)
+      }
+      return(snaps[keep_idx])
+    }
+
+    keep_idx <- which(snap_types %in% c(
+      "hand_start",
+      "forced_bets",
+      "street",
+      "showdown",
+      "hand_end",
+      "elimination"
+    ))
+
+    if (length(keep_idx) == 0) {
+      keep_idx <- unique(c(1L, length(snaps)))
+    }
+
+    snaps[keep_idx]
+  }
+
+  tournament_state$hand_log <- lapply(tournament_state$hand_log %||% list(), function(hand) {
+    if (isTRUE(preserve_tv_hands) && isTRUE(hand$for_tv)) {
+      return(hand)
+    }
+
+    hand$state_snapshots <- keep_snapshots(hand$state_snapshots %||% list())
+    hand
+  })
+
+  if (!is.null(tournament_state$current_hand) && inherits(tournament_state$current_hand, "hand_state")) {
+    current_hand_number <- tournament_state$current_hand$hand_number %||% NA_integer_
+    current_hand_is_tv <- isTRUE(preserve_tv_hands) && any(vapply(
+      tournament_state$hand_log %||% list(),
+      function(hand) {
+        isTRUE(hand$for_tv) &&
+          identical(as.integer(hand$hand_number %||% NA_integer_), as.integer(current_hand_number))
+      },
+      logical(1)
+    ))
+
+    if (!current_hand_is_tv) {
+      tournament_state$current_hand$state_snapshots <- keep_snapshots(tournament_state$current_hand$state_snapshots %||% list())
+    }
+  }
+
+  tournament_state
+}
 demo_engine_single_hand_verbose <- function(
     bot_fns = list(random_bot, simple_preflop_strength_bot, always_call_bot),
     player_names = c("Bot A", "Bot B", "Bot C"),
@@ -406,15 +510,27 @@ demo_tournament_run <- function(
     show_hand_details = FALSE,
     hand_pause_mode = c("none", "street", "action"),
     pause_between_hands = FALSE,
-    stop_at_players = 1L
+    stop_at_players = 1L,
+    max_actions_per_hand = 1000L,
+    snapshot_mode = c("full", "key", "final", "none"),
+    preserve_tv_hands = TRUE,
+    tv_threshold = 3,
+    major_stack_change_pct = 0.25,
+    require_major_stack_change = TRUE
 ) {
   ensure_demo_dependencies_loaded()
   hand_pause_mode <- match.arg(hand_pause_mode)
+  snapshot_mode <- match.arg(snapshot_mode)
 
   if (!is.numeric(stop_at_players) || length(stop_at_players) != 1 || is.na(stop_at_players) || stop_at_players < 1) {
     stop("`stop_at_players` must be a positive integer.")
   }
   stop_at_players <- as.integer(stop_at_players)
+
+  if (!is.numeric(max_actions_per_hand) || length(max_actions_per_hand) != 1 || is.na(max_actions_per_hand) || max_actions_per_hand < 1) {
+    stop("`max_actions_per_hand` must be a positive integer.")
+  }
+  max_actions_per_hand <- as.integer(max_actions_per_hand)
 
   if (!is.na(rng_seed)) {
     set.seed(as.integer(rng_seed))
@@ -489,7 +605,7 @@ demo_tournament_run <- function(
         pause_mode = hand_pause_mode
       )
     } else {
-      tourn <- play_current_hand(tourn)
+      tourn <- play_current_hand(tourn, max_actions = max_actions_per_hand)
     }
 
     tourn <- update_blind_level(tourn)
@@ -538,6 +654,14 @@ demo_tournament_run <- function(
   tourn$remaining_player_names <- remaining_players$name
   tourn$remaining_bot_fns <- bot_fns[remaining_players$bot_index]
   tourn$stopped_at_players <- stop_at_players
+  tourn <- thin_demo_hand_log(
+    tourn,
+    snapshot_mode = snapshot_mode,
+    preserve_tv_hands = preserve_tv_hands,
+    tv_threshold = tv_threshold,
+    major_stack_change_pct = major_stack_change_pct,
+    require_major_stack_change = require_major_stack_change
+  )
 
   if (isTRUE(verbose)) {
     cat("\n=====================================\n")

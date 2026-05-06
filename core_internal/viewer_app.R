@@ -542,6 +542,63 @@ run_viewer_app <- function(log_data = NULL) {
     tools::toTitleCase(gsub("_", " ", last_type))
   }
 
+  hand_chatter_entries <- function(hand, snapshot, max_entries = 4L) {
+    action_history <- hand$action_history %||% list()
+    if (!is.list(action_history) || length(action_history) == 0 || is.null(snapshot)) {
+      return(list())
+    }
+
+    action_count <- as.integer(snapshot$action_count %||% length(action_history))
+    action_count <- max(0L, min(action_count, length(action_history)))
+    if (action_count == 0) {
+      return(list())
+    }
+
+    past_actions <- action_history[seq_len(action_count)]
+    entries <- Filter(function(a) {
+      chatter <- a$chatter %||% a$table_talk %||% ""
+      nzchar(trimws(paste(as.character(chatter), collapse = " ")))
+    }, past_actions)
+
+    if (length(entries) == 0) {
+      return(list())
+    }
+
+    tail(entries, max_entries)
+  }
+
+  build_chatter_ui <- function(hand, snapshot, broadcast_mode = FALSE) {
+    if (!isTRUE(broadcast_mode)) {
+      return(NULL)
+    }
+
+    entries <- hand_chatter_entries(hand, snapshot)
+    if (length(entries) == 0) {
+      return(NULL)
+    }
+
+    rows <- lapply(entries, function(a) {
+      chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = "\n")
+      chatter <- strip_chatter_speaker_prefix(chatter)
+      shiny::tags$div(
+        class = "viewer-chatter-row",
+        shiny::tags$div(class = "viewer-chatter-speaker", as_scalar_chr(a$player_name, a$player_id %||% "Player")),
+        shiny::tags$div(class = "viewer-chatter-text", chatter)
+      )
+    })
+
+    shiny::tags$div(
+      class = "viewer-chatter-panel",
+      shiny::tags$div(class = "viewer-chatter-title", "Table Chatter"),
+      rows
+    )
+  }
+
+  strip_chatter_speaker_prefix <- function(chatter) {
+    chatter <- trimws(as_scalar_chr(chatter, ""))
+    sub("^[[:alnum:] ._'?-]{1,45}:\\s*", "", chatter)
+  }
+
   chip_stack_breakdown <- function(amount) {
     amount <- as.numeric(amount)
     if (is.na(amount) || amount <= 0) {
@@ -897,7 +954,7 @@ run_viewer_app <- function(log_data = NULL) {
     )
   }
 
-  build_table_ui <- function(snapshot, hand, reveal_player_ids = NULL) {
+  build_table_ui <- function(snapshot, hand, reveal_player_ids = NULL, broadcast_mode = FALSE) {
     if (is.null(snapshot)) {
       return(shiny::tags$div(class = "viewer-empty-state", "No snapshots were found for this hand."))
     }
@@ -964,7 +1021,8 @@ run_viewer_app <- function(log_data = NULL) {
         ),
         chip_nodes,
         seat_nodes
-      )
+      ),
+      build_chatter_ui(hand, snapshot, broadcast_mode = broadcast_mode)
     )
   }
 
@@ -978,6 +1036,7 @@ run_viewer_app <- function(log_data = NULL) {
         Player = character(0),
         Type = character(0),
         Amount = numeric(0),
+        Chatter = character(0),
         stringsAsFactors = FALSE
       ))
     }
@@ -991,6 +1050,7 @@ run_viewer_app <- function(log_data = NULL) {
         Player = as_scalar_chr(a$player_name, a$player_id %||% ""),
         Type = as_scalar_chr(a$type),
         Amount = as_scalar_num(a$amount, 0),
+        Chatter = strip_chatter_speaker_prefix(a$chatter %||% a$table_talk),
         stringsAsFactors = FALSE
       )
     })
@@ -1701,6 +1761,206 @@ run_viewer_app <- function(log_data = NULL) {
           background: #f3efe7;
           color: #4e5a65;
         }
+        .viewer-chatter-panel {
+          margin-top: 12px;
+          padding: 12px 14px;
+          border-radius: 16px;
+          background: #171f29;
+          color: #f4efe3;
+          box-shadow: 0 10px 24px rgba(0,0,0,0.16);
+        }
+        .viewer-chatter-title {
+          font-size: 11px;
+          letter-spacing: 1.2px;
+          text-transform: uppercase;
+          font-weight: 800;
+          color: #e7c36a;
+          margin-bottom: 8px;
+        }
+        .viewer-chatter-row {
+          display: flex;
+          gap: 10px;
+          align-items: baseline;
+          padding: 7px 0;
+          border-top: 1px solid rgba(255,255,255,0.10);
+        }
+        .viewer-chatter-row:first-of-type {
+          border-top: 0;
+          padding-top: 0;
+        }
+        .viewer-chatter-speaker {
+          min-width: 140px;
+          max-width: 190px;
+          font-size: 12px;
+          font-weight: 800;
+          color: #f5d889;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .viewer-chatter-text {
+          flex: 1;
+          font-size: 14px;
+          font-weight: 650;
+          line-height: 1.35;
+        }
+      ")),
+      shiny::tags$script(shiny::HTML("
+        (function() {
+          function playToneSequence(kind) {
+            var AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+
+            var ctx = window.viewerAudioContext || new AudioContext();
+            window.viewerAudioContext = ctx;
+            if (ctx.state === 'suspended') {
+              ctx.resume();
+            }
+
+            var now = ctx.currentTime;
+            var notes = kind === 'elimination'
+              ? [
+                  { f: 392, endF: 330, t: 0.00, d: 0.34 },
+                  { f: 330, endF: 277, t: 0.38, d: 0.34 },
+                  { f: 277, endF: 220, t: 0.76, d: 0.46 }
+                ]
+              : kind === 'chatter'
+                ? [
+                    { f: 1568, t: 0.00, d: 0.055 },
+                    { f: 2093, t: 0.07, d: 0.075 }
+                  ]
+              : kind === 'level'
+                ? [
+                  { f: 740, t: 0.00, d: 0.11 },
+                  { f: 740, t: 0.24, d: 0.11 },
+                  { f: 740, t: 0.48, d: 0.11 },
+                  { f: 980, t: 0.76, d: 0.18 }
+                ]
+                : [
+                  { f: 392, t: 0.00, d: 0.08 },
+                  { f: 587, t: 0.09, d: 0.08 },
+                  { f: 784, t: 0.24, d: 0.08 },
+                  { f: 587, t: 0.33, d: 0.08 },
+                  { f: 880, t: 0.48, d: 0.10 },
+                  { f: 1175, t: 0.62, d: 0.18 }
+                ];
+
+            notes.forEach(function(note) {
+              var osc = ctx.createOscillator();
+              var gain = ctx.createGain();
+              osc.type = kind === 'elimination' ? 'sawtooth' : 'sine';
+              osc.frequency.setValueAtTime(note.f, now + note.t);
+              if (kind === 'elimination' && note.endF) {
+                osc.frequency.exponentialRampToValueAtTime(note.endF, now + note.t + note.d);
+              }
+              gain.gain.setValueAtTime(0.0001, now + note.t);
+              gain.gain.exponentialRampToValueAtTime(kind === 'level' ? 0.07 : kind === 'chatter' ? 0.045 : 0.10, now + note.t + 0.015);
+              gain.gain.exponentialRampToValueAtTime(0.0001, now + note.t + note.d);
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start(now + note.t);
+              osc.stop(now + note.t + note.d + 0.04);
+            });
+          }
+
+          function speakChatter(message) {
+            if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) return;
+
+            var botVoiceMap = {
+              'Rando': 0,
+              'Aggro': 0,
+              'PrePlanner': 0,
+              'GetAlong': 0,
+              'Da streets': 0,
+              'ScardyBot': 0,
+              'Confused': 0,
+              'MoreConfused': 0,
+              'LabBot': 0,
+              'LabBot2': 0,
+              'Jaymon': 0,
+              'Joel': 0,
+              'Nikola': 0,
+              'Mehdi': 0,
+              'Nate': 0,
+              'Mady': 0,
+              'Tara': 0,
+              'Lucy': 0,
+              'Siena': 0,
+              'Ruth': 0,
+              'King Rikki': 5,
+              'Hatch Bot': 1,
+              'Gearan up to beat you': 0,
+              'Sir Hu McBluff': 19,
+              'Talmage Bot': 12,
+              'Bot inSpector': 16,
+              'Khan you fold?': 11,
+              'Fordeing Ahead': 3,
+              'Maurice Hawkins': 4,
+              'Biermann': 2,
+              'Biermann Bot': 2
+            };
+
+            function availableVoices() {
+              var voices = window.speechSynthesis.getVoices();
+              window.viewerSpeechVoices = voices;
+              return voices;
+            }
+
+            var text = message && message.text ? String(message.text) : '';
+            var speaker = message && message.speaker ? String(message.speaker) : '';
+            text = text.replace(/\\s+/g, ' ').trim();
+            speaker = speaker.replace(/\\s+/g, ' ').trim();
+            if (!text) return;
+
+            if (text.length > 260) {
+              text = text.slice(0, 257) + '...';
+            }
+
+            var utterance = new SpeechSynthesisUtterance(speaker ? speaker + ' says: ' + text : text);
+            var voices = availableVoices();
+            if (!voices.length && !message.__voiceRetry) {
+              window.setTimeout(function() {
+                message.__voiceRetry = true;
+                speakChatter(message);
+              }, 250);
+              return;
+            }
+
+            var speakerAlias = speaker.replace(/\\s+Bot$/, '');
+            var voiceIndex = Object.prototype.hasOwnProperty.call(botVoiceMap, speaker)
+              ? botVoiceMap[speaker]
+              : Object.prototype.hasOwnProperty.call(botVoiceMap, speakerAlias)
+                ? botVoiceMap[speakerAlias]
+                : null;
+            if (voiceIndex !== null && voices[voiceIndex]) {
+              utterance.voice = voices[voiceIndex];
+            }
+            utterance.rate = 1.02;
+            utterance.pitch = 1.05;
+            utterance.volume = 0.95;
+
+            window.speechSynthesis.cancel();
+            window.setTimeout(function() {
+              window.speechSynthesis.speak(utterance);
+            }, 180);
+          }
+
+          if (window.Shiny) {
+            if ('speechSynthesis' in window) {
+              window.viewerSpeechVoices = window.speechSynthesis.getVoices();
+              window.speechSynthesis.onvoiceschanged = function() {
+                window.viewerSpeechVoices = window.speechSynthesis.getVoices();
+              };
+            }
+            Shiny.addCustomMessageHandler('viewer-play-sound', function(message) {
+              var kind = message && message.kind;
+              playToneSequence(kind === 'level' || kind === 'elimination' || kind === 'chatter' ? kind : 'feature');
+            });
+            Shiny.addCustomMessageHandler('viewer-speak-chatter', function(message) {
+              speakChatter(message || {});
+            });
+          }
+        })();
       "))
     ),
     shiny::titlePanel("Poker Bot Replay Viewer"),
@@ -1753,6 +2013,9 @@ run_viewer_app <- function(log_data = NULL) {
     broadcast_feature_hand <- shiny::reactiveVal(NA_integer_)
     broadcast_banner <- shiny::reactiveVal(NULL)
     resume_overview_after_feature <- shiny::reactiveVal(FALSE)
+    last_seen_broadcast_level <- shiny::reactiveVal(as.integer(replay$hand_log[[as.integer(first_hand_choice)]]$level %||% NA_integer_))
+    last_elimination_sound_key <- shiny::reactiveVal("")
+    last_chatter_sound_key <- shiny::reactiveVal("")
 
     current_hand_choice <- function() {
       selected <- as.character(input$hand_index %||% first_hand_choice)
@@ -1786,6 +2049,32 @@ run_viewer_app <- function(log_data = NULL) {
       ))
     }
 
+    play_broadcast_sound <- function(kind = c("feature", "level", "elimination", "chatter")) {
+      kind <- match.arg(kind)
+      if (!isTRUE(input$broadcast_mode %||% FALSE)) {
+        return(invisible(NULL))
+      }
+
+      session$sendCustomMessage("viewer-play-sound", list(kind = kind))
+      invisible(NULL)
+    }
+
+    speak_broadcast_chatter <- function(text, speaker = "") {
+      if (!isTRUE(input$broadcast_mode %||% FALSE) ||
+          !isTRUE(input$broadcast_speak_chatter %||% TRUE)) {
+        return(invisible(NULL))
+      }
+
+      session$sendCustomMessage(
+        "viewer-speak-chatter",
+        list(
+          text = as_scalar_chr(text, ""),
+          speaker = as_scalar_chr(speaker, "")
+        )
+      )
+      invisible(NULL)
+    }
+
     start_featured_hand <- function(hand_idx) {
       if (is.na(hand_idx) || hand_idx < 1L || hand_idx > length(replay$hand_log)) {
         return(invisible(NULL))
@@ -1795,6 +2084,7 @@ run_viewer_app <- function(log_data = NULL) {
       broadcast_feature_hand(as.integer(hand_idx))
       shiny::updateSelectInput(session, "hand_index", selected = as.character(hand_idx))
       shiny::updateTabsetPanel(session, "main_tab", selected = "Hand Replay")
+      play_broadcast_sound("feature")
 
       reason_text <- hand_feature_reason(hand_idx)
       show_broadcast_banner(
@@ -1913,6 +2203,13 @@ run_viewer_app <- function(log_data = NULL) {
               label = "Broadcast mode",
               value = isTRUE(input$broadcast_mode %||% FALSE)
             ),
+            if (isTRUE(input$broadcast_mode %||% FALSE)) {
+              shiny::checkboxInput(
+                inputId = "broadcast_speak_chatter",
+                label = "Speak player comments",
+                value = isTRUE(input$broadcast_speak_chatter %||% TRUE)
+              )
+            },
             shiny::selectInput(
               inputId = "hand_index",
               label = "Show tournament state through hand",
@@ -1946,6 +2243,13 @@ run_viewer_app <- function(log_data = NULL) {
               label = "Broadcast mode",
               value = isTRUE(input$broadcast_mode %||% FALSE)
             ),
+            if (isTRUE(input$broadcast_mode %||% FALSE)) {
+              shiny::checkboxInput(
+                inputId = "broadcast_speak_chatter",
+                label = "Speak player comments",
+                value = isTRUE(input$broadcast_speak_chatter %||% TRUE)
+              )
+            },
             shiny::selectInput(
               inputId = "hand_index",
               label = "Select hand",
@@ -2010,11 +2314,12 @@ run_viewer_app <- function(log_data = NULL) {
         player_choices <- player_choices[valid_choice_idx]
       }
       choices <- c("All players" = "__ALL__", player_choices)
+      selected <- if (isTRUE(input$broadcast_mode %||% FALSE)) "__ALL__" else character(0)
       shiny::checkboxGroupInput(
         inputId = "visible_hole_cards",
         label = "Show hole cards for",
         choices = choices,
-        selected = character(0)
+        selected = selected
       )
     })
 
@@ -2107,6 +2412,46 @@ run_viewer_app <- function(log_data = NULL) {
 
       shiny::updateSliderInput(session, "step_index", value = current_idx + 1L)
     })
+
+    shiny::observeEvent(input$step_index, {
+      if (!isTRUE(input$broadcast_mode %||% FALSE)) {
+        return()
+      }
+
+      snap <- current_snapshot()
+      if (is.null(snap)) {
+        return()
+      }
+
+      action_history <- current_hand()$action_history %||% list()
+      action_count <- as.integer(snap$action_count %||% 0L)
+      action_count <- max(0L, min(action_count, length(action_history)))
+      if (action_count > 0L) {
+        action <- action_history[[action_count]]
+        chatter <- paste(trimws(as.character(action$chatter %||% action$table_talk %||% "")), collapse = " ")
+        chatter_key <- paste(selected_hand_index(), action_count, sep = ":")
+        if (nzchar(chatter) && !identical(chatter_key, last_chatter_sound_key())) {
+          last_chatter_sound_key(chatter_key)
+          play_broadcast_sound("chatter")
+          speak_broadcast_chatter(
+            text = strip_chatter_speaker_prefix(chatter),
+            speaker = as_scalar_chr(action$player_name, action$player_id %||% "")
+          )
+        }
+      }
+
+      if (!identical(as_scalar_chr(snap$snapshot_type, ""), "elimination")) {
+        return()
+      }
+
+      key <- paste(selected_hand_index(), as.integer(input$step_index %||% NA_integer_), sep = ":")
+      if (identical(key, last_elimination_sound_key())) {
+        return()
+      }
+
+      last_elimination_sound_key(key)
+      play_broadcast_sound("elimination")
+    }, ignoreInit = TRUE)
 
     shiny::observeEvent(input$main_tab, {
       current_tab <- input$main_tab %||% "Overview"
@@ -2337,10 +2682,14 @@ run_viewer_app <- function(log_data = NULL) {
       if ("__ALL__" %in% reveal_ids) {
         reveal_ids <- "__ALL__"
       }
+      if (isTRUE(input$broadcast_mode %||% FALSE)) {
+        reveal_ids <- "__ALL__"
+      }
       build_table_ui(
         snapshot = current_snapshot(),
         hand = current_hand(),
-        reveal_player_ids = reveal_ids
+        reveal_player_ids = reveal_ids,
+        broadcast_mode = isTRUE(input$broadcast_mode %||% FALSE)
       )
     })
 
@@ -2376,6 +2725,31 @@ run_viewer_app <- function(log_data = NULL) {
 
     # Reset step slider to 1 whenever the selected hand changes.
     shiny::observeEvent(input$hand_index, {
+      hand_idx <- selected_hand_index()
+      current_level <- as.integer(replay$hand_log[[hand_idx]]$level %||% NA_integer_)
+      previous_level <- last_seen_broadcast_level()
+
+      if (isTRUE(input$broadcast_mode %||% FALSE) &&
+          !is.na(current_level) &&
+          !is.na(previous_level) &&
+          current_level > previous_level) {
+        play_broadcast_sound("level")
+        show_broadcast_banner(
+          title = "Blind Level Up",
+          text = paste0("Level ", current_level),
+          subtitle = paste0(
+            "Blinds ",
+            as_scalar_chr(replay$hand_log[[hand_idx]]$small_blind, "?"),
+            " / ",
+            as_scalar_chr(replay$hand_log[[hand_idx]]$big_blind, "?")
+          ),
+          duration_ms = 1800L
+        )
+      }
+      last_seen_broadcast_level(current_level)
+      last_elimination_sound_key("")
+      last_chatter_sound_key("")
+
       snaps <- current_snapshots()
       if (length(snaps) > 0) {
         shiny::updateSliderInput(session, "step_index", value = 1, min = 1, max = length(snaps))
