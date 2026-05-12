@@ -579,55 +579,11 @@ run_viewer_app <- function(log_data = NULL) {
   }
 
   hand_chatter_entries <- function(hand, snapshot, max_entries = 4L) {
-    action_history <- hand_action_history(hand)
-    if (!is.list(action_history) || length(action_history) == 0 || is.null(snapshot)) {
-      return(list())
-    }
-
-    action_count <- as.integer(snapshot$action_count %||% length(action_history))
-    action_count <- max(0L, min(action_count, length(action_history)))
-    if (action_count == 0) {
-      return(list())
-    }
-
-    past_actions <- action_history[seq_len(action_count)]
-    entries <- Filter(function(a) {
-      chatter <- a$chatter %||% a$table_talk %||% ""
-      nzchar(trimws(paste(as.character(chatter), collapse = " ")))
-    }, past_actions)
-
-    if (length(entries) == 0) {
-      return(list())
-    }
-
-    tail(entries, max_entries)
+    list()
   }
 
   build_chatter_ui <- function(hand, snapshot, broadcast_mode = FALSE) {
-    if (!isTRUE(broadcast_mode)) {
-      return(NULL)
-    }
-
-    entries <- hand_chatter_entries(hand, snapshot)
-    if (length(entries) == 0) {
-      return(NULL)
-    }
-
-    rows <- lapply(entries, function(a) {
-      chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = "\n")
-      chatter <- strip_chatter_speaker_prefix(chatter)
-      shiny::tags$div(
-        class = "viewer-chatter-row",
-        shiny::tags$div(class = "viewer-chatter-speaker", as_scalar_chr(a$player_name, a$player_id %||% "Player")),
-        shiny::tags$div(class = "viewer-chatter-text", chatter)
-      )
-    })
-
-    shiny::tags$div(
-      class = "viewer-chatter-panel",
-      shiny::tags$div(class = "viewer-chatter-title", "Table Chatter"),
-      rows
-    )
+    NULL
   }
 
   strip_chatter_speaker_prefix <- function(chatter) {
@@ -1050,19 +1006,6 @@ run_viewer_app <- function(log_data = NULL) {
     }
 
     texts <- character(0)
-    action_history <- hand_action_history(hand)
-    action_count <- as.integer(snapshot$action_count %||% 0L)
-    action_count <- max(0L, min(action_count, length(action_history)))
-    if (action_count > 0L) {
-      action <- action_history[[action_count]]
-      chatter <- paste(trimws(as.character(action$chatter %||% action$table_talk %||% "")), collapse = " ")
-      chatter <- strip_chatter_speaker_prefix(chatter)
-      if (nzchar(chatter)) {
-        speaker <- as_scalar_chr(action$player_name, action$player_id %||% "")
-        texts <- c(texts, if (nzchar(speaker)) paste(speaker, "says:", chatter) else chatter)
-      }
-    }
-
     snap_type <- as_scalar_chr(snapshot$snapshot_type, "")
     if (identical(snap_type, "hand_end")) {
       texts <- c(texts, winner_announcement_text(hand))
@@ -1112,26 +1055,7 @@ run_viewer_app <- function(log_data = NULL) {
   }
 
   intro_chatter_lookup <- function(replay) {
-    lookup <- list()
-    for (hand in replay$hand_log %||% list()) {
-      actions <- hand_action_history(hand)
-      if (!is.list(actions) || length(actions) == 0) next
-      for (a in actions) {
-        chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = " ")
-        chatter <- strip_chatter_speaker_prefix(chatter)
-        if (!nzchar(chatter)) next
-
-        keys <- unique(c(
-          paste0("pid:", as_scalar_chr(a$player_id, "")),
-          paste0("name:", as_scalar_chr(a$player_name, ""))
-        ))
-        keys <- keys[nzchar(sub("^[^:]+:", "", keys))]
-        for (key in keys) {
-          lookup[[key]] <- unique(c(lookup[[key]] %||% character(0), chatter))
-        }
-      }
-    }
-    lookup
+    list()
   }
 
   intro_example_bot_names <- c(
@@ -1229,50 +1153,11 @@ run_viewer_app <- function(log_data = NULL) {
   }
 
   intro_source_chatter_lookup <- function() {
-    lookup <- list()
-    cache <- list()
-
-    for (player_name in names(intro_source_files)) {
-      path <- intro_source_files[[player_name]]
-      raw_lines <- cache[[path]] %||% NULL
-      if (is.null(raw_lines)) {
-        raw_lines <- intro_extract_source_strings(path)
-        cache[[path]] <- raw_lines
-      }
-
-      prefixes <- intro_source_prefixes[[player_name]] %||% player_name
-      prefix_tags <- paste0(prefixes, ":")
-      has_prefix <- vapply(raw_lines, function(line) {
-        line <- trimws(as_scalar_chr(line, ""))
-        any(startsWith(line, prefix_tags))
-      }, logical(1))
-
-      lines <- vapply(raw_lines[has_prefix], intro_clean_source_line, character(1))
-      lines <- unique(lines[nzchar(lines)])
-      if (length(lines) > 0) {
-        lookup[[paste0("name:", player_name)]] <- lines
-      }
-    }
-
-    lookup
+    list()
   }
 
   intro_comment_for_player <- function(player, replay_lookup, source_lookup = list()) {
-    if (intro_is_example_bot(player)) {
-      return("")
-    }
-
-    pid_key <- paste0("pid:", as_scalar_chr(player$player_id, ""))
-    name_key <- paste0("name:", as_scalar_chr(player$player_name, ""))
-    lines <- unique(c(
-      source_lookup[[name_key]] %||% character(0),
-      source_lookup[[pid_key]] %||% character(0),
-      replay_lookup[[pid_key]] %||% character(0),
-      replay_lookup[[name_key]] %||% character(0)
-    ))
-    lines <- lines[nzchar(trimws(lines))]
-    if (length(lines) == 0) return("")
-    sample(lines, size = 1)
+    ""
   }
 
   intro_announcement_text <- function(player) {
@@ -1491,7 +1376,6 @@ run_viewer_app <- function(log_data = NULL) {
         Player = character(0),
         Type = character(0),
         Amount = numeric(0),
-        Chatter = character(0),
         stringsAsFactors = FALSE
       ))
     }
@@ -1505,7 +1389,6 @@ run_viewer_app <- function(log_data = NULL) {
         Player = as_scalar_chr(a$player_name, a$player_id %||% ""),
         Type = as_scalar_chr(a$type),
         Amount = as_scalar_num(a$amount, 0),
-        Chatter = strip_chatter_speaker_prefix(a$chatter %||% a$table_talk),
         stringsAsFactors = FALSE
       )
     })
@@ -2697,19 +2580,6 @@ run_viewer_app <- function(log_data = NULL) {
     }
 
     speak_broadcast_chatter <- function(text, speaker = "", queue = FALSE) {
-      if (!isTRUE(input$broadcast_mode %||% FALSE) ||
-          !isTRUE(input$broadcast_speak_chatter %||% TRUE)) {
-        return(invisible(NULL))
-      }
-
-      session$sendCustomMessage(
-        "viewer-speak-chatter",
-        list(
-          text = as_scalar_chr(text, ""),
-          speaker = as_scalar_chr(speaker, ""),
-          queue = isTRUE(queue)
-        )
-      )
       invisible(NULL)
     }
 
@@ -2906,13 +2776,6 @@ run_viewer_app <- function(log_data = NULL) {
               label = "Broadcast mode",
               value = isTRUE(input$broadcast_mode %||% FALSE)
             ),
-            if (isTRUE(input$broadcast_mode %||% FALSE)) {
-              shiny::checkboxInput(
-                inputId = "broadcast_speak_chatter",
-                label = "Speak intro and comments",
-                value = isTRUE(input$broadcast_speak_chatter %||% TRUE)
-              )
-            },
             shiny::fluidRow(
               shiny::column(width = 4, shiny::actionButton("intro_play", "Play Intro")),
               shiny::column(width = 4, shiny::actionButton("intro_pause", "Pause")),
@@ -2932,13 +2795,6 @@ run_viewer_app <- function(log_data = NULL) {
               label = "Broadcast mode",
               value = isTRUE(input$broadcast_mode %||% FALSE)
             ),
-            if (isTRUE(input$broadcast_mode %||% FALSE)) {
-              shiny::checkboxInput(
-                inputId = "broadcast_speak_chatter",
-                label = "Speak player comments",
-                value = isTRUE(input$broadcast_speak_chatter %||% TRUE)
-              )
-            },
             shiny::selectInput(
               inputId = "hand_index",
               label = "Show tournament state through hand",
@@ -2972,13 +2828,6 @@ run_viewer_app <- function(log_data = NULL) {
               label = "Broadcast mode",
               value = isTRUE(input$broadcast_mode %||% FALSE)
             ),
-            if (isTRUE(input$broadcast_mode %||% FALSE)) {
-              shiny::checkboxInput(
-                inputId = "broadcast_speak_chatter",
-                label = "Speak player comments",
-                value = isTRUE(input$broadcast_speak_chatter %||% TRUE)
-              )
-            },
             shiny::selectInput(
               inputId = "hand_index",
               label = "Select hand",
@@ -3281,23 +3130,6 @@ run_viewer_app <- function(log_data = NULL) {
       snap <- current_snapshot_at_step()
       if (is.null(snap)) {
         return()
-      }
-
-      action_history <- hand_action_history(current_hand())
-      action_count <- as.integer(snap$action_count %||% 0L)
-      action_count <- max(0L, min(action_count, length(action_history)))
-      if (action_count > 0L) {
-        action <- action_history[[action_count]]
-        chatter <- paste(trimws(as.character(action$chatter %||% action$table_talk %||% "")), collapse = " ")
-        chatter_key <- paste(selected_hand_index(), action_count, sep = ":")
-        if (nzchar(chatter) && !identical(chatter_key, last_chatter_sound_key())) {
-          last_chatter_sound_key(chatter_key)
-          play_broadcast_sound("chatter")
-          speak_broadcast_chatter(
-            text = strip_chatter_speaker_prefix(chatter),
-            speaker = as_scalar_chr(action$player_name, action$player_id %||% "")
-          )
-        }
       }
 
       if (identical(as_scalar_chr(snap$snapshot_type, ""), "hand_end")) {
@@ -3653,7 +3485,7 @@ run_viewer_app <- function(log_data = NULL) {
 estimate_broadcast_runtime <- function(log_data,
                                        overview_replay_speed = c("fast", "standard", "slow"),
                                        replay_speed = c("standard", "slow", "fast"),
-                                       speak_chatter = TRUE,
+                                       speak_chatter = FALSE,
                                        include_speech_padding = TRUE,
                                        seconds_per_word = 0.36,
                                        speech_extra_seconds = 0.5,
@@ -3893,82 +3725,20 @@ estimate_broadcast_runtime <- function(log_data,
   }
 
   chatter_words <- function(hand) {
-    actions <- hand_action_history(hand)
-    if (!is.list(actions) || length(actions) == 0) {
-      return(0L)
-    }
-    sum(vapply(actions, function(a) {
-      chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = " ")
-      chatter <- sub("^[[:alnum:] ._'?-]{1,45}:\\s*", "", chatter)
-      word_count(chatter)
-    }, integer(1)))
+    0L
   }
 
   televised_comments_by_player <- function(hand_log) {
-    rows <- list()
-    for (i in seq_along(hand_log)) {
-      hand <- hand_log[[i]]
-      if (!isTRUE(hand$for_tv)) {
-        next
-      }
-      actions <- hand_action_history(hand)
-      if (!is.list(actions) || length(actions) == 0) {
-        next
-      }
-      for (a in actions) {
-        chatter <- paste(trimws(as.character(a$chatter %||% a$table_talk %||% "")), collapse = " ")
-        chatter <- sub("^[[:alnum:] ._'?-]{1,45}:\\s*", "", chatter)
-        if (!nzchar(trimws(chatter))) {
-          next
-        }
-        player <- as_scalar_chr(
-          a$player_name,
-          as_scalar_chr(a$player_id, "Unknown")
-        )
-        rows[[length(rows) + 1L]] <- data.frame(
-          player = player,
-          comments = 1L,
-          words = word_count(chatter),
-          stringsAsFactors = FALSE
-        )
-      }
-    }
-
-    if (length(rows) == 0) {
-      return(data.frame(
-        player = character(0),
-        comments = integer(0),
-        words = integer(0),
-        stringsAsFactors = FALSE
-      ))
-    }
-
-    raw <- do.call(rbind, rows)
-    comment_totals <- stats::aggregate(
-      cbind(comments, words) ~ player,
-      data = raw,
-      FUN = sum
+    data.frame(
+      player = character(0),
+      comments = integer(0),
+      words = integer(0),
+      stringsAsFactors = FALSE
     )
-    comment_totals <- comment_totals[order(-comment_totals$comments, comment_totals$player), , drop = FALSE]
-    rownames(comment_totals) <- NULL
-    comment_totals
   }
 
   snapshot_speech_words <- function(hand, snapshot) {
     words <- 0L
-    action_history <- hand_action_history(hand)
-    action_count <- as.integer(snapshot$action_count %||% 0L)
-    action_count <- max(0L, min(action_count, length(action_history)))
-    if (action_count > 0L) {
-      action <- action_history[[action_count]]
-      chatter <- paste(trimws(as.character(action$chatter %||% action$table_talk %||% "")), collapse = " ")
-      chatter <- sub("^[[:alnum:] ._'?-]{1,45}:\\s*", "", chatter)
-      if (nzchar(trimws(chatter))) {
-        speaker <- as_scalar_chr(action$player_name, action$player_id %||% "")
-        words <- words + word_count(if (nzchar(speaker)) paste(speaker, "says:", chatter) else chatter)
-      }
-    }
-
     snap_type <- as_scalar_chr(snapshot$snapshot_type, "")
     if (identical(snap_type, "hand_end")) {
       words <- words + announcement_words(hand, FALSE)
@@ -3983,7 +3753,6 @@ estimate_broadcast_runtime <- function(log_data,
         "Tournament life ends here."
       ))
     }
-
     words
   }
 
@@ -4109,14 +3878,7 @@ print.broadcast_runtime_estimate <- function(x, ...) {
   cat("  Featured hands:", x$featured_hands, "\n")
   cat("  Featured replay steps:", x$replay_steps, "\n")
   cat("  Elimination hands:", x$elimination_hands, "\n")
-  if (!is.null(x$televised_comments_by_player) &&
-      is.data.frame(x$televised_comments_by_player) &&
-      nrow(x$televised_comments_by_player) > 0) {
-    cat("  Televised comments by player:\n")
-    print(x$televised_comments_by_player, row.names = FALSE)
-  } else {
-    cat("  Televised comments by player: none\n")
-  }
+  cat("  Chatter: disabled\n")
   cat("  Assumptions: overview", x$assumptions$overview_replay_speed_ms, "ms;",
       "feature replay", x$assumptions$featured_hand_replay_speed_ms, "ms;",
       "speech", if (isTRUE(x$assumptions$speech_padding_included)) "included" else "not included", "\n")

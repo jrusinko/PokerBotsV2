@@ -205,6 +205,115 @@
 # SECTION 6: MAIN BOT — v3
 # ============================================================
 
+clamp <- function(x, lo, hi) {
+  lo <- as.numeric(lo %||% 0)
+  hi <- as.numeric(hi %||% lo)
+  x <- as.numeric(x %||% lo)
+  max(lo, min(hi, x))
+}
+
+.rank_val <- function(cards) {
+  ranks <- substring(cards, 1, nchar(cards) - 1)
+  vals <- c("2" = 2, "3" = 3, "4" = 4, "5" = 5, "6" = 6, "7" = 7,
+            "8" = 8, "9" = 9, "T" = 10, "J" = 11, "Q" = 12, "K" = 13, "A" = 14)
+  unname(vals[ranks])
+}
+
+.preflop_tier <- function(hole_cards) {
+  vals <- sort(.rank_val(hole_cards), decreasing = TRUE)
+  suited <- substring(hole_cards[1], nchar(hole_cards[1]), nchar(hole_cards[1])) ==
+    substring(hole_cards[2], nchar(hole_cards[2]), nchar(hole_cards[2]))
+  pair <- vals[1] == vals[2]
+  gap <- abs(vals[1] - vals[2])
+  if (pair && vals[1] >= 10) return(1)
+  if (vals[1] == 14 && vals[2] >= 12) return(1)
+  if (pair && vals[1] >= 7) return(2)
+  if (vals[1] >= 13 && vals[2] >= 10) return(2)
+  if (suited && vals[1] == 14 && vals[2] >= 9) return(2)
+  if (pair || (suited && gap <= 2 && vals[1] >= 10) || vals[1] + vals[2] >= 22) return(3)
+  if (suited && gap <= 3) return(4)
+  if (gap <= 2 && vals[1] >= 10) return(4)
+  5
+}
+
+.draw_outs <- function(hole_cards, board, hand_cat = "high_card") {
+  cards <- c(hole_cards, board)
+  suits <- substring(cards, nchar(cards), nchar(cards))
+  flush_outs <- if (length(suits) > 0 && max(table(suits)) == 4) 9 else 0
+  vals <- sort(unique(.rank_val(cards)))
+  straight_outs <- 0
+  for (start in 2:10) {
+    missing <- setdiff(start:(start + 4), vals)
+    if (length(missing) == 1) straight_outs <- max(straight_outs, 4)
+  }
+  max(flush_outs, straight_outs)
+}
+
+.pick_villain_range <- function(villain_stack, avg_stack) list()
+
+.mc_equity <- function(hole_cards, board, villain_range, n_sims = 600) {
+  category <- made_hand_category(hole_cards, board)
+  switch(category,
+         straight_flush = 0.98, quads = 0.96, full_house = 0.90, flush = 0.84,
+         straight = 0.80, trips = 0.72, two_pair = 0.64, pair = 0.48,
+         high_card = if (max(.rank_val(hole_cards), na.rm = TRUE) == 14) 0.34 else 0.24,
+         0.25)
+}
+
+.get_villain_stack <- function(bot_input) {
+  public_players <- bot_input$public_players %||% list()
+  stacks <- vapply(public_players, function(p) as.numeric(p$stack %||% 0), numeric(1))
+  villain_stacks <- stacks[stacks != as.numeric(bot_input$stack %||% NA_real_)]
+  if (length(villain_stacks) == 0) villain_stacks <- stacks
+  list(
+    villain_stack = if (length(villain_stacks) > 0) max(villain_stacks, na.rm = TRUE) else as.numeric(bot_input$stack %||% 0),
+    avg_stack = if (length(stacks) > 0) mean(stacks, na.rm = TRUE) else as.numeric(bot_input$stack %||% 0)
+  )
+}
+
+.is_in_position <- function(bot_input) {
+  players <- bot_input$players %||% bot_input$public_players %||% list()
+  my_seat <- as.integer(bot_input$seat %||% NA_integer_)
+  active <- Filter(function(p) {
+    !isTRUE(p$folded) && !isTRUE(p$all_in) && !identical(as.character(p$status %||% "active"), "eliminated")
+  }, players)
+  if (length(active) == 0 || is.na(my_seat)) return(TRUE)
+  seats <- vapply(active, function(p) as.integer(p$seat %||% NA_integer_), integer(1))
+  my_seat == seats[length(seats)]
+}
+
+.streets_left <- function(street) {
+  switch(street, flop = 2L, turn = 1L, river = 0L, preflop = 3L, 0L)
+}
+
+.geo_sizing <- function(pot, stack, streets_left) {
+  pot <- max(1, as.numeric(pot %||% 1))
+  stack <- max(1, as.numeric(stack %||% 1))
+  if (streets_left <= 0) return(0.75)
+  max(0.33, min(1.25, ((pot + stack) / pot)^(1 / streets_left) - 1))
+}
+
+.legal_bet_amount <- function(bot_input, amount) {
+  if (!bot_has_action(bot_input, "bet")) return(NA_real_)
+  as.integer(clamp(amount, bot_min_bet(bot_input), bot_max_bet(bot_input)))
+}
+
+.legal_raise_amount <- function(bot_input, amount) {
+  if (!bot_has_action(bot_input, "raise")) return(NA_real_)
+  as.integer(clamp(amount, bot_min_raise(bot_input), bot_max_raise(bot_input)))
+}
+
+.has_blocker <- function(hole_cards, board) {
+  any(.rank_val(hole_cards) >= 13, na.rm = TRUE)
+}
+
+.preflop_decision <- function(bot_input, tier, in_pos, rng) {
+  if (tier <= 2 && bot_has_action(bot_input, "raise")) return(list(type = "raise", amount = bot_min_raise(bot_input)))
+  if (tier <= 4 && bot_has_action(bot_input, "call")) return(list(type = "call"))
+  if (tier <= 3 && bot_has_action(bot_input, "bet")) return(list(type = "bet", amount = bot_min_bet(bot_input)))
+  choose_preferred_action(bot_input, c("check", "fold"))
+}
+
 mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
   # --- 1. Unpack ---
@@ -217,9 +326,7 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
   rng      <- runif(1)
 
   mady_says <- function(lines, chance = 0.18) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
   # Default opponent profile if not provided
@@ -261,9 +368,13 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
           "Mady: I am applying pressure and maybe spilling coffee on the model.",
           "Mady: Corruption project update: this pot looks suspiciously mine.",
           "Mady: Jake would call this risky. Nate would call it attractive, probably.",
-          "Mady: Nate, stop looking so impressed. Or do not."
+          "Mady: Nate, stop looking so impressed. Or do not.",
+          "Mady: This is confidence with a feasibility region.",
+          "Mady: If Nate is watching, yes, the model is this charming.",
+          "Mady: Jake would worry. I prefer winning."
         ))
-        return(list(type = "raise", amount = stack))  # All-in shove
+        if (bot_has_action(bot_input, "all_in")) return(list(type = "all_in"))
+        return(list(type = "raise", amount = bot_max_raise(bot_input)))  # All-in-style shove
       }
       mady_says(c(
         "Mady: I decline this negative expected value situation.",
@@ -336,7 +447,10 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
       "Mady: The model says I am allowed to be insufferably confident.",
       "Mady: I would spill coffee celebrating, but I need both hands for chips.",
       "Mady: Consider this a very efficient allocation of pressure.",
-      "Mady: Nate, try to keep up. Jake never had the bankroll for this energy."
+      "Mady: Nate, try to keep up. Jake never had the bankroll for this energy.",
+      "Mady: I am optimizing over chips, ego, and dramatic timing.",
+      "Mady: Operations research calls this an obvious solution.",
+      "Mady: Nate, this is what an optimal basis looks like."
     ))
     if (committed) {
       # Jam: get it in
@@ -356,9 +470,12 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
     }
 
     size <- .geo_sizing(pot, stack, .streets_left(street))
-    amt  <- as.integer(clamp(pot * size, bot_min_raise(bot_input), bot_max_raise(bot_input)))
-    if (bot_has_action(bot_input, "raise")) return(list(type = "raise", amount = amt))
-    if (bot_has_action(bot_input, "bet"))   return(list(type = "bet",   amount = amt))
+    if (bot_has_action(bot_input, "raise")) {
+      return(list(type = "raise", amount = .legal_raise_amount(bot_input, pot * size)))
+    }
+    if (bot_has_action(bot_input, "bet")) {
+      return(list(type = "bet", amount = .legal_bet_amount(bot_input, pot * size)))
+    }
     return(list(type = "call"))
   }
 
@@ -376,11 +493,11 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
       # Facing a bet: raise for value unless vs. LAG (then call to control)
       if (archetype == "LAG" && !committed) return(list(type = "call"))
       if (bot_has_action(bot_input, "raise"))
-        return(list(type = "raise", amount = clamp(amt * 2.5, bot_min_raise(bot_input), bot_max_raise(bot_input))))
+        return(list(type = "raise", amount = .legal_raise_amount(bot_input, amt * 2.5)))
       return(list(type = "call"))
     }
     if (exploit_size > 0 && bot_has_action(bot_input, "bet"))
-      return(list(type = "bet", amount = amt))
+      return(list(type = "bet", amount = .legal_bet_amount(bot_input, amt)))
     return(list(type = "check"))
   }
 
@@ -398,7 +515,7 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
 
     if (rng < bluff_freq && call_amt == 0 && bot_has_action(bot_input, "bet")) {
       # Size larger — we have equity even if called
-      return(list(type = "bet", amount = as.integer(pot * 0.75)))
+      return(list(type = "bet", amount = .legal_bet_amount(bot_input, pot * 0.75)))
     }
     if (call_amt > 0) {
       # Call if we're getting good odds (MDF-based)
@@ -420,7 +537,7 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
     if (archetype == "LAG")              bluff_freq <- bluff_freq * 0.6
 
     if (rng < bluff_freq && call_amt == 0 && bot_has_action(bot_input, "bet")) {
-      return(list(type = "bet", amount = as.integer(pot * exploit_size)))
+      return(list(type = "bet", amount = .legal_bet_amount(bot_input, pot * exploit_size)))
     }
     # Facing a bet with a draw: call if price is right
     if (call_amt > 0) {
@@ -487,14 +604,14 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
     if (street == "river" && texture$dry && has_blocker && fold_equity_good && rng < 0.18) {
       # Blocker bluff on dry river — small sample gating via rng
       if (archetype != "CALLING_STATION" && bot_has_action(bot_input, "bet")) {
-        return(list(type = "bet", amount = as.integer(pot * 0.70)))
+        return(list(type = "bet", amount = .legal_bet_amount(bot_input, pot * 0.70)))
       }
     }
 
     # Flop/Turn: probe bet vs. Weak Tight opponents if checked to us
     if (street %in% c("flop", "turn") && call_amt == 0 && archetype == "WEAK_TIGHT" && rng < 0.30) {
       if (bot_has_action(bot_input, "bet"))
-        return(list(type = "bet", amount = as.integer(pot * 0.40)))
+        return(list(type = "bet", amount = .legal_bet_amount(bot_input, pot * 0.40)))
     }
   }
 
@@ -502,7 +619,9 @@ mady_bot <- function(bot_input, opponent_profile = NULL, mtt_context = NULL) {
   mady_says(c(
     "Mady: Fallback strategy. Still better than chaos.",
     "Mady: The model is undecided. I remain confident.",
-    "Mady: I will fold/check with grace and mild superiority."
+    "Mady: I will fold/check with grace and mild superiority.",
+    "Mady: Constraint binding, patience activated.",
+    "Mady: I am not quiet; I am gathering evidence."
   ), chance = 0.10)
   if (bot_has_action(bot_input, "check")) return(list(type = "check"))
   # Don't fold to micro-stabs (<2% of stack); too exploitable

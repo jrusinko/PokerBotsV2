@@ -5,8 +5,55 @@
 # These guest bots intentionally use the same behavior as random_bot.
 ############################################################
 
+guest_bot_chatter_chance <- function() {
+  getOption("pokerbots.chatter_probability", 0.10)
+}
+
+guest_bot_chatter_quote_allowed <- function(line) {
+  if (exists("bot_chatter_quote_allowed", mode = "function")) {
+    return(bot_chatter_quote_allowed(line))
+  }
+  TRUE
+}
+
+guest_bot_social_chatter <- function(lines, bot_input) {
+  public_players <- bot_input$public_players %||% list()
+  table_names <- tolower(vapply(
+    public_players,
+    function(p) paste(as.character(p$player_name %||% ""), as.character(p$name %||% ""), as.character(p$bot_name %||% "")),
+    character(1)
+  ))
+  social_names <- c("mady", "nate", "lucy", "joel", "tara", "jaymon", "siena", "maurice", "hawkins")
+  present <- social_names[vapply(social_names, function(nm) any(grepl(nm, table_names, fixed = TRUE)), logical(1))]
+  if (length(present) == 0) {
+    return(list(lines = lines, chance = guest_bot_chatter_chance()))
+  }
+  social_idx <- vapply(
+    lines,
+    function(line) any(grepl(paste(present, collapse = "|"), tolower(line))),
+    logical(1)
+  )
+  if (!any(social_idx)) {
+    return(list(lines = lines, chance = guest_bot_chatter_chance()))
+  }
+  list(
+    lines = c(lines, rep(lines[social_idx], 4)),
+    chance = max(guest_bot_chatter_chance(), getOption("pokerbots.social_chatter_probability", 0.15))
+  )
+}
+
+guest_bot_say <- function(lines, bot_input) {
+  chatter <- guest_bot_social_chatter(lines, bot_input)
+  if (runif(1) < chatter$chance) {
+    line <- sample(chatter$lines, size = 1)
+    if (guest_bot_chatter_quote_allowed(line)) {
+      cat(line, "\n")
+    }
+  }
+}
+
 king_bot <- function(bot_input) {
-  if (runif(1) < 0.18) {
+  {
     lines <- c(
       "King Rikki: Excellent vertex pressure, table. You rock.\n",
       "King Rikki: I am raising the chromatic number of this pot. You rock.\n",
@@ -22,9 +69,13 @@ king_bot <- function(bot_input) {
       "King Rikki: I offer a courteous domination number. You rock.\n",
       "King Rikki: Your bluff is a lovely subgraph. You rock.\n",
       "King Rikki: I have found a cut vertex, and it is your stack. You rock.\n",
-      "King Rikki: This hand is now a royal coloring problem. You rock.\n"
+      "King Rikki: This hand is now a royal coloring problem. You rock.\n",
+      "King Rikki: I am professionally increasing the edge density. You rock.\n",
+      "King Rikki: Your range has beautiful symmetry and alarming leaks. You rock.\n",
+      "King Rikki: The shortest path to victory appears to pass through my stack. You rock.\n",
+      "King Rikki: I admire your graph, even as I contract it. You rock.\n"
     )
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   legal_types <- bot_input$legal_actions$legal_action_types
@@ -77,7 +128,7 @@ king_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("check", "call", "fold"))
 }
 hatch_bot <- function(bot_input) {
-  if (runif(1) < 0.15) {
+  {
     lines <- c(
       "Hatch Bot: Places, everyone. This [bleep] hand has an arc.\n",
       "Hatch Bot: I am making a bold [bleep] choice in the second act.\n",
@@ -93,9 +144,13 @@ hatch_bot <- function(bot_input) {
       "Hatch Bot: This is not tilt. This is method acting.\n",
       "Hatch Bot: My river monologue may cost half my stack.\n",
       "Hatch Bot: The fourth wall is down and the chips are up.\n",
-      "Hatch Bot: Bravo to that bet. Now watch this [bleep] callback.\n"
+      "Hatch Bot: Bravo to that bet. Now watch this [bleep] callback.\n",
+      "Hatch Bot: I am giving this hand subtext and possibly a raise.\n",
+      "Hatch Bot: The blocking is terrible, but the pot has promise.\n",
+      "Hatch Bot: I would like a spotlight, a river card, and fewer cowards.\n",
+      "Hatch Bot: This [bleep] table needs commitment to the scene.\n"
     )
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   legal_types <- bot_input$legal_actions$legal_action_types
@@ -203,7 +258,7 @@ hatch_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("check", "fold", "call"))
 }
 gearan_bot <- function(bot_input) {
-  if (runif(1) < 0.14) {
+  {
     lines <- c(
       "Gearan Bot: Let us play this hand in a spirit of collaboration and consequence.\n",
       "Gearan Bot: The Peace Corps taught patience; this pot asks for judgment.\n",
@@ -219,9 +274,13 @@ gearan_bot <- function(bot_input) {
       "Gearan Bot: Leadership means knowing when to raise and when to invite dialogue.\n",
       "Gearan Bot: This is a community pot, but I still intend to govern it well.\n",
       "Gearan Bot: May our decisions be consequential and our kickers live.\n",
-      "Gearan Bot: I am pursuing a peaceful transfer of chips.\n"
+      "Gearan Bot: I am pursuing a peaceful transfer of chips.\n",
+      "Gearan Bot: The best institutions are transparent; my cards are not.\n",
+      "Gearan Bot: Mary would appreciate both prudence and a well-timed call.\n",
+      "Gearan Bot: I propose a constructive dialogue around this pot.\n",
+      "Gearan Bot: Let us model civic responsibility with disciplined chip movement.\n"
     )
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   legal_types <- bot_input$legal_actions$legal_action_types
@@ -278,7 +337,7 @@ gearan_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("fold", "call", "check"))
 }
 hu_bot <- function(bot_input) {
-  if (runif(1) < 0.20) {
+  {
     lines <- c(
       "Hu Bot: Fantastic! The model is excited about this hand!\n",
       "Hu Bot: Machine learning energy is high today!\n",
@@ -294,9 +353,13 @@ hu_bot <- function(bot_input) {
       "Hu Bot: This hand has tremendous data science potential!\n",
       "Hu Bot: I am overfitting to enthusiasm, and it is great!\n",
       "Hu Bot: Excellent! Let us optimize the chip objective!\n",
-      "Hu Bot: The hidden layer is smiling today!\n"
+      "Hu Bot: The hidden layer is smiling today!\n",
+      "Hu Bot: Wow! This decision boundary is extremely exciting!\n",
+      "Hu Bot: I love the energy in this feature space!\n",
+      "Hu Bot: This is either all-in or fold, and both are educational!\n",
+      "Hu Bot: Great news! The algorithm has selected maximum enthusiasm!\n"
     )
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   if (runif(1) < 0.50 && bot_has_action(bot_input, "all_in")) {
@@ -306,7 +369,7 @@ hu_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("check", "fold", "call"))
 }
 talmage_bot <- function(bot_input) {
-  if (runif(1) < 0.18) {
+  {
     lines <- c(
       "Talmage Bot: I am investing in this pot like a promising local brewery.\n",
       "Talmage Bot: Dark entrepreneurship teaches us to watch incentives carefully.\n",
@@ -322,9 +385,13 @@ talmage_bot <- function(bot_input) {
       "Talmage Bot: This table needs more entrepreneurial hustle.\n",
       "Talmage Bot: The local economy of chips is heating up.\n",
       "Talmage Bot: I will incubate this hand until the turn.\n",
-      "Talmage Bot: That raise has excellent founder-market fit.\n"
+      "Talmage Bot: That raise has excellent founder-market fit.\n",
+      "Talmage Bot: I am treating this pot like a lively tasting room.\n",
+      "Talmage Bot: Folding would be a failure to network with opportunity.\n",
+      "Talmage Bot: The brewery model says stay active and watch margins.\n",
+      "Talmage Bot: This is not loose play; it is entrepreneurial discovery.\n"
     )
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   hole_cards <- bot_input$hole_cards
@@ -372,7 +439,7 @@ talmage_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("check", "call", "fold"))
 }
 spector_bot <- function(bot_input) {
-  if (runif(1) < 0.17) {
+  {
     lines <- c(
       "Spector Bot: The wavefunction has not collapsed, but my bet may.\n",
       "Spector Bot: Quantum computing suggests many branches; I prefer the aggressive one.\n",
@@ -388,9 +455,13 @@ spector_bot <- function(bot_input) {
       "Spector Bot: The turn card has altered the timeline.\n",
       "Spector Bot: I compute one future where this bluff works beautifully.\n",
       "Spector Bot: Live long and pressure the blinds.\n",
-      "Spector Bot: The uncertainty principle protects my range.\n"
+      "Spector Bot: The uncertainty principle protects my range.\n",
+      "Spector Bot: I am disguising aggression as a harmless measurement.\n",
+      "Spector Bot: The quantum circuit recommends dramatic leverage.\n",
+      "Spector Bot: My range is cloaked, Captain, but not peaceful.\n",
+      "Spector Bot: Somewhere in the multiverse this bet is completely standard.\n"
     )
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   hole_cards <- bot_input$hole_cards
@@ -460,7 +531,7 @@ khan_bot <- function(bot_input) {
     character(1)
   ))
 
-  if (runif(1) < 0.16) {
+  {
     lines <- c(
       "Khan Bot: Incentives matter, and this pot has interesting institutions.\n",
       "Khan Bot: Development economics suggests patience, but corruption suggests watching every chip.\n",
@@ -476,7 +547,11 @@ khan_bot <- function(bot_input) {
       "Khan Bot: My development strategy involves selective pressure.\n",
       "Khan Bot: Corruption research says someone is hiding value here.\n",
       "Khan Bot: I am smiling because the incentives are misaligned.\n",
-      "Khan Bot: A small nudge can create a large over-bet.\n"
+      "Khan Bot: A small nudge can create a large over-bet.\n",
+      "Khan Bot: I am politely measuring rent-seeking behavior in real time.\n",
+      "Khan Bot: The welfare implications of your call are concerning.\n",
+      "Khan Bot: Development requires patience, but victory rewards pressure.\n",
+      "Khan Bot: I invite the table to reveal its risk preferences.\n"
     )
 
     if (any(grepl("mady", table_names))) {
@@ -486,7 +561,7 @@ khan_bot <- function(bot_input) {
       lines <- c(lines, "Khan Bot: Nate, the efficient frontier is probably somewhere near a very large bet.\n")
     }
 
-    cat(sample(lines, size = 1))
+    guest_bot_say(lines, bot_input)
   }
 
   hole_cards <- bot_input$hole_cards
@@ -546,7 +621,7 @@ khan_bot <- function(bot_input) {
 }
 kahn_bot <- khan_bot
 forde_bot <- function(bot_input) {
-  if (runif(1) < 0.15) {
+  {
     lines <- c(
       "Forde Bot: The model must meet a higher standard before I commit chips.\n",
       "Forde Bot: Probability first, bravado second. Sehr gut.\n",
@@ -563,9 +638,13 @@ forde_bot <- function(bot_input) {
       "Forde Bot: I expect more from this sample space.",
       "Forde Bot: This model has too many hidden variables.",
       "Forde Bot: The proof of value is left to the river.",
-      "Forde Bot: I grade this bet generously as incomplete."
+      "Forde Bot: I grade this bet generously as incomplete.",
+      "Forde Bot: Your line lacks rigor, but I appreciate the ambition.",
+      "Forde Bot: The posterior distribution is giving me concerns.",
+      "Forde Bot: Bridge discipline says count first, posture second.",
+      "Forde Bot: This biological model has evolved into a call."
     )
-    cat(sample(lines, size = 1), "\n")
+    guest_bot_say(lines, bot_input)
   }
 
   hole_cards <- bot_input$hole_cards
@@ -622,7 +701,7 @@ forde_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("check", "fold", "call"))
 }
 hawkins_bot <- function(bot_input) {
-  if (runif(1) < 0.18) {
+  {
     lines <- c(
       "Hawkins Bot: I have seen this spot before, and I already like my side of it.\n",
       "Hawkins Bot: You can count the chips twice. I already counted the pressure.\n",
@@ -640,9 +719,13 @@ hawkins_bot <- function(bot_input) {
       "Hawkins Bot: That call looks brave from over here.",
       "Hawkins Bot: The pressure is complimentary; the chips are not.",
       "Hawkins Bot: Siena knows a winning side story when she sees one.",
-      "Hawkins Bot: Siena, keep the alliance quiet. I have an image to maintain."
+      "Hawkins Bot: Siena, keep the alliance quiet. I have an image to maintain.",
+      "Hawkins Bot: I like clean pressure and messy opponents.",
+      "Hawkins Bot: This table keeps underestimating professional confidence.",
+      "Hawkins Bot: The debt is on your side of the felt now.",
+      "Hawkins Bot: Siena, this is just business. Very quiet business."
     )
-    cat(sample(lines, size = 1), "\n")
+    guest_bot_say(lines, bot_input)
   }
 
   hole_cards <- bot_input$hole_cards
@@ -718,7 +801,7 @@ hawkins_bot <- function(bot_input) {
   choose_preferred_action(bot_input, c("check", "fold", "call"))
 }
 biermann_bot <- function(bot_input) {
-  if (runif(1) < 0.13) {
+  {
     lines <- c(
       "Biermann Bot: Quietly computing the quotient structure of this pot.\n",
       "Biermann Bot: This orbit has roller derby energy.\n",
@@ -734,9 +817,13 @@ biermann_bot <- function(bot_input) {
       "Biermann Bot: The algebra says commute; the derby says collide.",
       "Biermann Bot: I am quietly orbiting a very loud raise.",
       "Biermann Bot: This hand has excellent sci-fi side-quest potential.",
-      "Biermann Bot: Knit one, purl two, check-raise when ready."
+      "Biermann Bot: Knit one, purl two, check-raise when ready.",
+      "Biermann Bot: The group action is subtle; the hip check is not.",
+      "Biermann Bot: I am counting cosets and pretending not to enjoy this.",
+      "Biermann Bot: The yarn is calm. The derby brain is not.",
+      "Biermann Bot: This proof may require a spaceship and a blocking penalty."
     )
-    cat(sample(lines, size = 1), "\n")
+    guest_bot_say(lines, bot_input)
   }
 
   hole_cards <- bot_input$hole_cards

@@ -75,9 +75,7 @@ lucy_bot <- function(bot_input) {
   ##########################################################
 
   lucy_says <- function(lines, chance = 0.16) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
 #Preflop
@@ -101,7 +99,11 @@ lucy_bot <- function(bot_input) {
         "Lucy: I am quietly very excited about these cards.",
         "Lucy: Physics note: strong initial conditions matter.",
         "Lucy: My boyfriend would say be careful. Joel would probably make a chart.",
-        "Lucy: This launch trajectory is perfectly normal and not about Joel."
+        "Lucy: This launch trajectory is perfectly normal and not about Joel.",
+        "Lucy: Teacher voice says everyone breathe; physics voice says raise.",
+        "Lucy: Space Camp prepared me for pressure and awkward trajectories.",
+        "Lucy: Joel's spreadsheet energy is not relevant, probably.",
+        "Lucy: This hand has kind momentum and suspicious acceleration."
       ))
       if ("raise" %in% legal_types) {
         return(list(type = "raise", amount = bot_min_raise(bot_input)))
@@ -118,7 +120,9 @@ lucy_bot <- function(bot_input) {
           "Lucy: Small classroom demonstration: sometimes we raise.",
           "Lucy: The tutoring voice says show your work. The cards say raise.",
           "Lucy: Positive energy, careful orbit, tiny raise.",
-          "Lucy: Joel, please do not make a hockey analogy about this orbit."
+          "Lucy: Joel, please do not make a hockey analogy about this orbit.",
+          "Lucy: This is peer-reviewed encouragement with chips.",
+          "Lucy: My boyfriend likes caution. The cards are requesting curiosity."
         ))
         return(list(type = "raise", amount = bot_min_raise(bot_input)))
       }
@@ -170,7 +174,9 @@ lucy_bot <- function(bot_input) {
       "Lucy: The physics is working out nicely.",
       "Lucy: Teacher voice says this is a teachable moment.",
       "Lucy: Mission control, we have a hand.",
-      "Lucy: Joel, no need to be impressed. But also, thank you."
+      "Lucy: Joel, no need to be impressed. But also, thank you.",
+      "Lucy: This is the kind of solution I would happily tutor.",
+      "Lucy: Positive attitude, strong hand, stable orbit."
     ))
     if ("raise" %in% legal_types) {
       return(list(type = "raise", amount = bot_min_raise(bot_input)))
@@ -234,7 +240,9 @@ lucy_bot <- function(bot_input) {
       "Lucy: We can be patient. Space is big.",
       "Lucy: Quiet fold/check, positive attitude.",
       "Lucy: Sometimes the best lesson is restraint.",
-      "Lucy: Restraint is important. That is a general statement, Joel."
+      "Lucy: Restraint is important. That is a general statement, Joel.",
+      "Lucy: I am being calm, supportive, and statistically evasive.",
+      "Lucy: This system can cool down before re-entry."
   ), chance = 0.12)
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }
@@ -242,11 +250,13 @@ lucy_bot <- function(bot_input) {
 
 
 #Run tournament
-results <- run_tournament(
-  list(lucy_bot, random_bot, aggressive_bot, always_call_bot)
-)
+if (FALSE) {
+  results <- run_tournament(
+    list(lucy_bot, random_bot, aggressive_bot, always_call_bot)
+  )
 
-print(results)
+  print(results)
+}
 
 ############################################################
 # TESTING / DEBUGGING SECTION

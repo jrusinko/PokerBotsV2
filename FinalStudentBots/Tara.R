@@ -99,9 +99,7 @@ tara_bot <- function(bot_input) {
   ##########################################################
 
   tara_says <- function(lines, chance = 0.055) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
   # Example beginner strategy:
@@ -114,7 +112,10 @@ tara_bot <- function(bot_input) {
       "Tara: Quietly calling. Like, beach-volume quiet.",
       "Tara: The math says this wave is rideable.",
       "Tara: I am still not talking. This is just a small footnote.",
-      "Tara: Jaymon and I are communicating entirely through not talking."
+      "Tara: Jaymon and I are communicating entirely through not talking.",
+      "Tara: Sunshine, high cards, low volume.",
+      "Tara: I would explain the math, but that feels like talking.",
+      "Tara: Jaymon heard the ocean in that check."
     ))
     if("call" %in% legal_types) return(list(type = "call"))
     if("check" %in% legal_types) return(list(type = "check"))
@@ -128,7 +129,9 @@ tara_bot <- function(bot_input) {
         "Tara: Small call, then back to sunshine.",
         "Tara: I am saying almost nothing, mathematically.",
         "Tara: This hand has mild beach energy.",
-        "Tara: Jaymon probably heard that silence too."
+        "Tara: Jaymon probably heard that silence too.",
+        "Tara: This is a quiet little theorem with tan lines.",
+        "Tara: Not talking, just asymptotically participating."
       ))
       if("call" %in% legal_types) return(list(type = "call"))
       if("check" %in% legal_types) return(list(type = "check"))
@@ -162,7 +165,9 @@ tara_bot <- function(bot_input) {
     "Tara: Fallback action. Still barely talking.",
     "Tara: I will let the cards speak. Softly.",
     "Tara: The limit exists, and it is quiet.",
-    "Tara: Jaymon and I have a whole conversation in the null space."
+    "Tara: Jaymon and I have a whole conversation in the null space.",
+    "Tara: Beach brain says stay chill. Math brain agrees.",
+    "Tara: My official statement is a very small shrug."
   ))
   return(choose_preferred_action(bot_input, c("check", "call", "fold")))
 }
@@ -182,6 +187,8 @@ tara_bot <- function(bot_input) {
 #   bot_input_to_dataframe(bot_input)
 #   demo_show_bot_input(tournament_state, as_dataframe = TRUE)
 ############################################################
+
+if (FALSE) {
 
 # ----------------------------------------------------------
 # TEST 1: Build the exact bot_input from a live tournament state
@@ -266,6 +273,7 @@ bot_input_example$legal_actions$actions
 #   list(type = "raise", amount = x)
 #
 
+}
 
 ############################################################
 # NOTES

@@ -222,7 +222,7 @@ thin_demo_hand_log <- function(
     snapshot_mode = c("full", "key", "final", "none"),
     preserve_tv_hands = TRUE,
     tv_threshold = 3,
-    major_stack_change_pct = 0.25,
+    major_stack_change_pct = 0.30,
     require_major_stack_change = TRUE
 ) {
   snapshot_mode <- match.arg(snapshot_mode)
@@ -294,7 +294,29 @@ thin_demo_hand_log <- function(
   }
 
   tournament_state$hand_log <- lapply(tournament_state$hand_log %||% list(), function(hand) {
+    if (length(hand$eliminations_this_hand %||% character(0)) > 0) {
+      hand$had_elimination <- TRUE
+      hand$for_tv <- TRUE
+      if (length(hand$action_history %||% list()) > 0) {
+        hand$broadcast_action_history <- hand$action_history
+      } else if (length(hand$broadcast_action_history %||% list()) > 0) {
+        hand$action_history <- hand$broadcast_action_history
+      }
+      reasons <- trimws(as.character(hand$interest_reasons %||% ""))
+      if (!grepl("elimination", reasons, fixed = TRUE)) {
+        hand$interest_reasons <- if (nzchar(reasons)) paste(reasons, "elimination", sep = "; ") else "elimination"
+      }
+      if (is.na(as.numeric(hand$interest_score %||% NA_real_))) {
+        hand$interest_score <- 10
+      }
+    }
+
     if (isTRUE(preserve_tv_hands) && isTRUE(hand$for_tv)) {
+      if (length(hand$action_history %||% list()) > 0) {
+        hand$broadcast_action_history <- hand$action_history
+      } else if (length(hand$broadcast_action_history %||% list()) > 0) {
+        hand$action_history <- hand$broadcast_action_history
+      }
       return(hand)
     }
 
@@ -515,7 +537,7 @@ demo_tournament_run <- function(
     snapshot_mode = c("full", "key", "final", "none"),
     preserve_tv_hands = TRUE,
     tv_threshold = 3,
-    major_stack_change_pct = 0.25,
+    major_stack_change_pct = 0.30,
     require_major_stack_change = TRUE
 ) {
   ensure_demo_dependencies_loaded()

@@ -158,22 +158,29 @@
 
 .bet <- function(bot_input, frac) {
   p  <- bot_input$pot; st <- bot_input$stack
-  mn <- tryCatch(bot_min_bet(bot_input),   error=function(e) 1L)
-  mx <- tryCatch(bot_max_bet(bot_input),   error=function(e) st)
+  mn <- bot_min_bet(bot_input)
+  mx <- bot_max_bet(bot_input)
   as.integer(max(mn, min(round(p*frac), mx, st)))
 }
 
 .raise_to <- function(bot_input, frac) {
   p  <- bot_input$pot; st <- bot_input$stack
-  mn <- tryCatch(bot_min_raise(bot_input), error=function(e) 1L)
-  mx <- tryCatch(bot_max_raise(bot_input), error=function(e) st)
+  mn <- bot_min_raise(bot_input)
+  mx <- bot_max_raise(bot_input)
   as.integer(max(mn, min(round(p*frac), mx, st)))
+}
+
+.bb_bet <- function(bot_input, mult, bb) {
+  st <- bot_input$stack
+  mn <- bot_min_bet(bot_input)
+  mx <- bot_max_bet(bot_input)
+  as.integer(max(mn, min(round(mult*bb), mx, st)))
 }
 
 .bb_raise <- function(bot_input, mult, bb) {
   st <- bot_input$stack
-  mn <- tryCatch(bot_min_raise(bot_input), error=function(e) bb)
-  mx <- tryCatch(bot_max_raise(bot_input), error=function(e) st)
+  mn <- bot_min_raise(bot_input)
+  mx <- bot_max_raise(bot_input)
   as.integer(max(mn, min(round(mult*bb), mx, st)))
 }
 
@@ -207,9 +214,7 @@ Siena_bot <- function(bot_input) {
   can_allin <- "all_in" %in% legal
 
   siena_says <- function(lines, chance = 0.17) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
   # Log opponent actions
@@ -242,7 +247,10 @@ Siena_bot <- function(bot_input) {
         "Siena: I teach patience first. Today, you are the lesson.",
         "Siena: Not my horse, not my course.",
         "Siena: I will stay kind and let that hand embarrass someone else.",
-        "Siena: Maurice-bot is absolutely not involved. Please move along."
+        "Siena: Maurice-bot is absolutely not involved. Please move along.",
+        "Siena: Bushytop sees the trap and declines the invitation.",
+        "Siena: Kindness includes folding bad hands loudly.",
+        "Siena: Lisbon taught perspective; this hand has none."
       ), chance = 0.12)
       if (can_check) return(list(type="check"))
       return(list(type="fold"))
@@ -282,7 +290,10 @@ Siena_bot <- function(bot_input) {
         "Siena: Bushytop has entered the arena.",
         "Siena: I am kind, confident, and absolutely not folding this.",
         "Siena: Global ambassador update: this pot is going abroad with me.",
-        "Siena: If Maurice-bot is watching, no he is not."
+        "Siena: If Maurice-bot is watching, no he is not.",
+        "Siena: Future teacher voice says pay attention.",
+        "Siena: This hand has regionals posture and table presence.",
+        "Siena: Maurice-bot would call this destiny. I call it position."
       ))
 
       if (current_bet > bb) {
@@ -334,7 +345,7 @@ Siena_bot <- function(bot_input) {
           "Siena: Bushytop bets with purpose."
         ))
         return(list(type="bet",
-                                  amount=.bb_raise(bot_input, 2.5, bb)))
+                                  amount=.bb_bet(bot_input, 2.5, bb)))
       }
       if (can_call)  return(list(type="call"))
     }
@@ -435,7 +446,10 @@ Siena_bot <- function(bot_input) {
       "Siena: Powerful smack talk, professional delivery.",
       "Siena: I did not come from the equestrian team to get bucked off here.",
       "Siena: You may want to take notes.",
-      "Siena: This stays between me, the pot, and Maurice-bot."
+      "Siena: This stays between me, the pot, and Maurice-bot.",
+      "Siena: Bushytop is not bluffing; Bushytop is instructing.",
+      "Siena: I am kind until the chips need a lesson.",
+      "Siena: Maurice-bot, stop looking proud. This is my pot."
     ))
     if (can_bet)   return(list(type="bet",   amount=.bet(bot_input, frac)))
     if (can_raise) return(list(type="raise", amount=.raise_to(bot_input, frac)))
@@ -505,7 +519,9 @@ Siena_bot <- function(bot_input) {
     "Siena: Not worth my chips or my hair volume.",
     "Siena: I will let someone else learn this lesson.",
     "Siena: Clean exit, confident stride.",
-    "Siena: Maurice-bot would make this messy. I am choosing elegance."
+    "Siena: Maurice-bot would make this messy. I am choosing elegance.",
+    "Siena: I can smack talk and still make the adult decision.",
+    "Siena: This hand needs a mentor, not my stack."
   ), chance = 0.12)
   return(list(type="fold"))
 }

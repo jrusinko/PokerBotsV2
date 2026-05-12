@@ -14,9 +14,7 @@ ruth_bot <- function(bot_input) {
   public_players <- bot_input$public_players
 
   ruth_says <- function(lines, chance = 0.16) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
   
   ##### --- 2. DYNAMIC EQUITY CALCULATOR --- #####
@@ -40,7 +38,7 @@ ruth_bot <- function(bot_input) {
       my_pair_val <- ifelse(hole_vals[1] == hole_vals[2], hole_vals[1], 
                             hole_vals[hole_vals %in% board_vals][1])
       
-      if (is_na(my_pair_val)) my_pair_val <- 0
+      if (is.na(my_pair_val)) my_pair_val <- 0
       
       if (my_pair_val > max_board) base_eq <- 0.75      # Very strong: Pocket pair higher than board
       else if (my_pair_val == max_board) base_eq <- 0.60 # Strong: Pair matches highest board card
@@ -89,7 +87,13 @@ ruth_bot <- function(bot_input) {
   pot_odds <- ifelse(to_call > 0, to_call / (pot + to_call), 0)
   
   # Detect 'Maniac' behavior: High average commitment suggests an aggressive/bluffing table.
-  avg_commit <- sum(sapply(public_players, function(p) p$committed_this_hand)) / length(public_players)
+  if (is.list(public_players) && length(public_players) > 0) {
+    avg_commit <- mean(vapply(public_players, function(p) {
+      as.numeric(p$committed_this_hand %||% 0)
+    }, numeric(1)), na.rm = TRUE)
+  } else {
+    avg_commit <- 0
+  }
   is_maniac_table <- avg_commit > (pot * 0.7)
   
   equity <- calculate_dynamic_equity()
@@ -111,7 +115,10 @@ ruth_bot <- function(bot_input) {
         "Ruth: Strong opening. I will keep the tempo professional.",
         "Ruth: Math and music agree on this rhythm.",
         "Ruth: Heron soccer taught me to step into space.",
-        "Ruth: Leadership means making the right raise calmly."
+        "Ruth: Leadership means making the right raise calmly.",
+        "Ruth: This hand has a clean melody and good field position.",
+        "Ruth: I can be positive and still apply pressure.",
+        "Ruth: Responsible does not mean passive."
       ))
       return(sanitize_action(list(type = "raise", amount = pot * 0.8)))
     }
@@ -145,7 +152,10 @@ ruth_bot <- function(bot_input) {
       "Ruth: Strong made hand. Time to lead with composure.",
       "Ruth: The math is clear and the melody is steady.",
       "Ruth: Heron energy, professional finish.",
-      "Ruth: I will press, but respectfully."
+      "Ruth: I will press, but respectfully.",
+      "Ruth: This is where preparation becomes execution.",
+      "Ruth: I am keeping the drama outside the formation.",
+      "Ruth: Strong hand, steady tempo, clean finish."
     ))
     size <- pot * bet_mult("strong")
     if ("raise" %in% legal_types) return(sanitize_action(list(type = "raise", amount = size)))
@@ -217,7 +227,9 @@ ruth_bot <- function(bot_input) {
     "Ruth: Check or fold. Responsible classroom behavior.",
     "Ruth: I will keep the tempo steady.",
     "Ruth: Positive, professional, nearby.",
-    "Ruth: No drama from me. Probably."
+    "Ruth: No drama from me. Probably.",
+    "Ruth: I am present, composed, and not chasing.",
+    "Ruth: Responsible one in class, still watching everything."
   ), chance = 0.10)
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }

@@ -191,9 +191,7 @@ jaymon_bot <- function(bot_input) {
   to_call <- max(0, current_bet - committed_this_round)
 
   jaymon_says <- function(lines, chance = 0.14) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
   n_active <- 1L
@@ -219,7 +217,10 @@ jaymon_bot <- function(bot_input) {
         "Jaymon: Shot clock is low. Captain has to create something.",
         "Jaymon: Five-six guard, full-court pressure, stack edition.",
         "Jaymon: Manchester to Geneva, I have seen tighter lanes than this.",
-        "Jaymon: Tara and I are running the quiet offense."
+        "Jaymon: Tara and I are running the quiet offense.",
+        "Jaymon: Senior guard read: attack the gap.",
+        "Jaymon: Small guard, clean handle, decent cards.",
+        "Jaymon: Tara heard that silence. That was the play call."
       ))
       if (bot_has_action(bot_input, "all_in")) return(list(type = "all_in"))
       return(choose_preferred_action(bot_input, c("call", "raise", "check", "fold")))
@@ -410,7 +411,10 @@ jaymon_bot <- function(bot_input) {
       "Jaymon: Quiet check. Captain voice.",
       "Jaymon: No need to force the offense.",
       "Jaymon: I will let the possession breathe.",
-      "Jaymon: Tara gets it. Sometimes silence is the whole play."
+      "Jaymon: Tara gets it. Sometimes silence is the whole play.",
+      "Jaymon: Quiet set, good spacing, no panic.",
+      "Jaymon: Software engineer brain says wait for better input.",
+      "Jaymon: Tara and I just ran a whole conversation off-ball."
   ), chance = 0.10)
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }
@@ -429,6 +433,8 @@ jaymon_bot <- function(bot_input) {
 #   bot_input_to_dataframe(bot_input)
 #   demo_show_bot_input(tournament_state, as_dataframe = TRUE)
 ############################################################
+
+if (FALSE) {
 
 # ----------------------------------------------------------
 # TEST 1: Build the exact bot_input from a live tournament state
@@ -526,8 +532,9 @@ bot_input_example$action_history
      chips = vapply(demo_result$players, function(p) p$stack, numeric(1)),
      place = vapply(demo_result$players, function(p) p$finishing_place, integer(1))
    )[order(
-     vapply(demo_result$players, function(p) p$finishing_place, integer(1))
+   vapply(demo_result$players, function(p) p$finishing_place, integer(1))
    ), ]
+}
 ############################################################
 # NOTES
 #

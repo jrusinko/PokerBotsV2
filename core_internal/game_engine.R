@@ -2327,6 +2327,83 @@ sanitize_aggressive_action_amount <- function(bot_action, legal, player) {
   bot_action
 }
 
+is_student_bot_player <- function(player) {
+  if (!inherits(player, "player_state")) {
+    return(FALSE)
+  }
+
+  student_names <- getOption(
+    "pokerbots.student_player_names",
+    c("Jaymon", "Joel", "Nikola", "Mehdi", "Nate", "Mady", "Tara", "Lucy", "Siena", "Ruth")
+  )
+
+  if (as.character(player$name %||% "") %in% as.character(student_names)) {
+    return(TRUE)
+  }
+
+  metadata <- if (is.function(player$bot_fn)) attr(player$bot_fn, "bot_metadata", exact = TRUE) else NULL
+  role <- metadata$role %||% metadata$type %||% metadata$group %||% NULL
+  if (!is.null(role) && any(tolower(as.character(role)) %in% c("student", "student_bot", "final_student"))) {
+    return(TRUE)
+  }
+
+  isTRUE(if (is.function(player$bot_fn)) attr(player$bot_fn, "student_bot", exact = TRUE) else FALSE)
+}
+
+count_player_raises_this_street <- function(hand_state, seat) {
+  actions <- hand_state$action_history %||% list()
+  if (!is.list(actions) || length(actions) == 0) {
+    return(0L)
+  }
+
+  current_street <- as.character(hand_state$street %||% "")
+  seat <- as.integer(seat)
+
+  sum(vapply(actions, function(a) {
+    identical(as.integer(a$seat %||% NA_integer_), seat) &&
+      identical(as.character(a$street %||% ""), current_street) &&
+      as.character(a$type %||% "") %in% c("raise", "all_in_raise")
+  }, logical(1)))
+}
+
+limit_non_student_third_raise <- function(bot_action, tournament_state, legal, player) {
+  if (!is.list(bot_action) || is.null(bot_action$type)) {
+    return(bot_action)
+  }
+
+  if (is_student_bot_player(player)) {
+    return(bot_action)
+  }
+
+  if (!identical(as.character(bot_action$type)[1], "raise")) {
+    return(bot_action)
+  }
+
+  previous_raises <- count_player_raises_this_street(tournament_state$current_hand, player$seat)
+  if (previous_raises < 2L) {
+    return(bot_action)
+  }
+
+  legal_types <- legal$legal_action_types %||% character(0)
+  if ("all_in" %in% legal_types && runif(1) < 0.20) {
+    out <- list(type = "all_in")
+    if (!is.null(bot_action$chatter)) out$chatter <- bot_action$chatter
+    return(out)
+  }
+  if ("call" %in% legal_types) {
+    out <- list(type = "call")
+    if (!is.null(bot_action$chatter)) out$chatter <- bot_action$chatter
+    return(out)
+  }
+  if ("all_in" %in% legal_types) {
+    out <- list(type = "all_in")
+    if (!is.null(bot_action$chatter)) out$chatter <- bot_action$chatter
+    return(out)
+  }
+
+  passive_fallback_action(legal)
+}
+
 safe_get_bot_action <- function(
     tournament_state,
     decision_timeout_sec = getOption("pokerbots.decision_timeout_sec", 1)
@@ -2397,6 +2474,7 @@ safe_get_bot_action <- function(
   }
 
   bot_action <- sanitize_aggressive_action_amount(bot_action, legal, player)
+  bot_action <- limit_non_student_third_raise(bot_action, tournament_state, legal, player)
   action_type <- as.character(bot_action$type)[1]
 
   if (!(action_type %in% legal$legal_action_types)) {
@@ -2457,6 +2535,32 @@ describe_hand_action_limit_state <- function(tournament_state, action_counter, m
     )
   }
 
+  street_raise_summary <- if (length(action_history) == 0) {
+    "(none)"
+  } else {
+    current_street <- as.character(hand_state$street %||% "")
+    street_actions <- action_history[vapply(action_history, function(a) {
+      identical(as.character(a$street %||% ""), current_street)
+    }, logical(1))]
+    raise_actions <- street_actions[vapply(street_actions, function(a) {
+      as.character(a$type %||% "") %in% c("raise", "all_in_raise")
+    }, logical(1))]
+
+    if (length(raise_actions) == 0) {
+      "(none)"
+    } else {
+      raise_seats <- vapply(raise_actions, function(a) as.character(a$seat %||% "NA"), character(1))
+      pieces <- lapply(split(raise_actions, raise_seats), function(actions) {
+        amounts <- vapply(actions, function(a) as.character(a$amount %||% "NA"), character(1))
+        paste0(
+          "seat ", as.character(actions[[1]]$seat %||% "NA"),
+          ": ", length(actions), " raise(s), amounts=", paste(amounts, collapse = ",")
+        )
+      })
+      paste(unlist(pieces, use.names = FALSE), collapse = " | ")
+    }
+  }
+
   paste0(
     "Maximum action count exceeded while playing hand.\n",
     "Actions attempted: ", action_counter, " / ", max_actions, "\n",
@@ -2470,6 +2574,7 @@ describe_hand_action_limit_state <- function(tournament_state, action_counter, m
     " | current_bet: ", hand_state$current_bet %||% "NA",
     " | pot: ", hand_state$pot %||% "NA", "\n",
     "Players: ", player_summary, "\n",
+    "Current street raise summary: ", street_raise_summary, "\n",
     "Recent actions: ", recent_summary, "\n",
     "To debug this exact hand, rerun the tournament with the same rng_seed and set verbose = TRUE or show_hand_details = TRUE."
   )
@@ -2582,6 +2687,7 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     tournament_state$elimination_order %||% character(0),
     elimination_order_before_hand
   )
+  had_elimination <- length(eliminations_this_hand) > 0L
 
   hand_summary <- list(
     hand_id = hand_state$hand_id,
@@ -2600,6 +2706,7 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     side_pots = hand_state$side_pots %||% list(),
     action_count = length(hand_state$action_history),
     action_history = hand_state$action_history,
+    broadcast_action_history = if (had_elimination) hand_state$action_history else NULL,
     state_snapshots = hand_state$state_snapshots %||% list(),
     starting_stack_summary = starting_stack_summary,
     ending_stack_summary = stack_summary,
@@ -2608,7 +2715,11 @@ play_current_hand <- function(tournament_state, max_actions = 1000L) {
     winners = extract_hand_winner_summary(hand_state$action_history),
     showdown_summary = extract_showdown_summary(hand_state$action_history),
     elimination_order_before_hand = elimination_order_before_hand,
-    eliminations_this_hand = eliminations_this_hand
+    eliminations_this_hand = eliminations_this_hand,
+    had_elimination = had_elimination,
+    for_tv = if (had_elimination) TRUE else NULL,
+    interest_reasons = if (had_elimination) "elimination" else NULL,
+    interest_score = if (had_elimination) 10 else NULL
   )
 
   tournament_state$hand_log[[length(tournament_state$hand_log) + 1L]] <- hand_summary
@@ -3088,6 +3199,11 @@ capture_hand_snapshot <- function(tournament_state,
 
   # Use existing action history length as a natural step counter when available.
   action_count <- length(hand_state$action_history %||% list())
+  latest_action <- if (action_count > 0L) {
+    hand_state$action_history[[action_count]]
+  } else {
+    NULL
+  }
 
   snapshot <- list(
     step = action_count,
@@ -3106,6 +3222,7 @@ capture_hand_snapshot <- function(tournament_state,
     big_blind_seat = hand_state$big_blind_seat %||% NA_integer_,
     board = hand_state$board %||% character(0),
     action_count = action_count,
+    latest_action = latest_action,
     players = player_snapshots
   )
 
@@ -3206,6 +3323,7 @@ extract_hand_winner_summary <- function(action_history) {
         win_type = "showdown_pot_award",
         pot_index = a$pot_index %||% NA_integer_,
         pot_amount = a$pot_amount %||% NA_real_,
+        eligible_seats = a$eligible_seats %||% integer(0),
         winner_seats = a$winner_seats %||% integer(0),
         payouts = a$payouts %||% numeric(0)
       )

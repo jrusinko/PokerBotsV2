@@ -13,9 +13,7 @@ mehdi_bot <- function(bot_input) {
   hole_vals <- sort(hole_rank_values(bot_input$hole_cards), decreasing = TRUE)
 
   mehdi_says <- function(lines, chance = 0.16) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
   # This helper function places a bet equal to the pot size.
@@ -48,7 +46,10 @@ mehdi_bot <- function(bot_input) {
         "Mehdi: Strong preflop range. I will proceed carefully.",
         "Mehdi: This hand passes the initial screening algorithm.",
         "Mehdi: Wall Street would call this a favorable signal.",
-        "Mehdi: Morocco builds from structure. So does this raise."
+        "Mehdi: Morocco builds from structure. So does this raise.",
+        "Mehdi: Careful model, serious execution.",
+        "Mehdi: The signal is strong enough to allocate capital.",
+        "Mehdi: I am thinking three streets ahead, quietly."
       ))
       # With a strong starting hand, the bot tries to raise; if that’s not legal, it bets;
       # if that’s not legal, it calls.
@@ -97,10 +98,13 @@ mehdi_bot <- function(bot_input) {
     } else {
       if ("bet" %in% legal) {
         mehdi_says(c(
-          "Mehdi: Value identified. Bet sizing should be exact.",
-          "Mehdi: This is portfolio allocation with chips.",
-          "Mehdi: The algorithm recommends pressure.",
-          "Mehdi: Careful does not mean passive."
+        "Mehdi: Value identified. Bet sizing should be exact.",
+        "Mehdi: This is portfolio allocation with chips.",
+        "Mehdi: The algorithm recommends pressure.",
+        "Mehdi: Careful does not mean passive.",
+        "Mehdi: Expected value has entered the chat.",
+        "Mehdi: Serious math, controlled aggression.",
+        "Mehdi: This is a calculated forward run."
         ))
         return(list(type = "bet", amount = calc_pot_bet()))
       }
@@ -141,7 +145,9 @@ mehdi_bot <- function(bot_input) {
   mehdi_says(c(
     "Mehdi: Strange state. Defaulting to robust behavior.",
     "Mehdi: Edge case detected. Safety first.",
-    "Mehdi: The system requires a conservative fallback."
+    "Mehdi: The system requires a conservative fallback.",
+    "Mehdi: Production systems need stable defaults.",
+    "Mehdi: I will not let noise become strategy."
   ), chance = 0.10)
   if ("check" %in% legal) return(list(type = "check"))
   if ("call" %in% legal) return(list(type = "call"))

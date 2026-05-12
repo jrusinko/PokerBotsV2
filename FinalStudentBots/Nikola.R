@@ -56,9 +56,7 @@ Nikola_bot <- function(bot_input) {
   amount_to_call <- max(0, current_bet - committed)
 
   nikola_says <- function(lines, chance = 0.17) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
   ##########################################################
@@ -304,7 +302,10 @@ Nikola_bot <- function(bot_input) {
         "Nikola: Serbian confidence, compiled successfully.",
         "Nikola: This hand has bravado and clean logic.",
         "Nikola: I am quiet until the algorithm says attack.",
-        "Nikola: Computer science major. Villain model says you are in trouble."
+        "Nikola: Computer science major. Villain model says you are in trouble.",
+        "Nikola: The villains underestimated my runtime.",
+        "Nikola: This is not swagger. This is predictive modeling.",
+        "Nikola: I have been alienated into excellent focus."
       ))
 
       if ("raise" %in% legal_types) {
@@ -621,7 +622,10 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
       "Nikola: You misjudged me and the board agreed.",
       "Nikola: Serbia scores on the counterattack.",
       "Nikola: This pot is about to learn computer science.",
-      "Nikola: I have the hand you were pretending to have."
+      "Nikola: I have the hand you were pretending to have.",
+      "Nikola: Villain, your narrative has failed unit testing.",
+      "Nikola: This is the part where bravado becomes evidence.",
+      "Nikola: I accept your chips as an apology."
     ))
 
     if ("raise" %in% legal_types) {
@@ -773,7 +777,10 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
       "Nikola: This is bravado with variable names.",
       "Nikola: I feel alienated, so I built my own pressure.",
       "Nikola: Villain thinks I missed. Villain is adorable.",
-      "Nikola: I am not lying. I am simulating confidence."
+      "Nikola: I am not lying. I am simulating confidence.",
+      "Nikola: This bluff has architecture.",
+      "Nikola: You called me reckless. I call this calibrated theater.",
+      "Nikola: The villain model says fold, but villains rarely listen."
     ))
 
     if ("bet" %in% legal_types) {
@@ -841,7 +848,9 @@ if (call_is_big && equity < 0.65 && !monster && !strong_made) {
     "Nikola: Fold. The ambush will wait.",
     "Nikola: You win this branch, not the program.",
     "Nikola: I was misjudged before the hand and I will be misjudged after.",
-    "Nikola: Exit condition met."
+    "Nikola: Exit condition met.",
+    "Nikola: I am not beaten. I am garbage collecting.",
+    "Nikola: This fold is tactical invisibility."
   ), chance = 0.12)
   return(safe_action(c("fold", "check")))
 

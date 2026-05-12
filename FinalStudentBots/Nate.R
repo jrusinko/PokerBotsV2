@@ -15,14 +15,18 @@ nate_bot <- function(bot_input) {
   vals        <- sort(hole_rank_values(hole_cards), decreasing = TRUE)
 
   # 1. THE SAFETY CLAMP
-  clamp_bet <- function(amt) {
-    return(max(min(amt, stack), bot_input$min_bet))
+  legal_bet_amount <- function(amt) {
+    if (!bot_has_action(bot_input, "bet")) return(NA_real_)
+    as.integer(max(bot_min_bet(bot_input), min(as.numeric(amt), bot_max_bet(bot_input))))
+  }
+
+  legal_raise_amount <- function(amt) {
+    if (!bot_has_action(bot_input, "raise")) return(NA_real_)
+    as.integer(max(bot_min_raise(bot_input), min(as.numeric(amt), bot_max_raise(bot_input))))
   }
 
   bill_says <- function(lines) {
-    if (runif(1) < 0.35) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input)
   }
 
   # 2. PREFLOP: THE TAX
@@ -33,9 +37,11 @@ nate_bot <- function(bot_input) {
         bill_says(c(
           "Bill: Found a monster. Starting the war.",
           "Bill: Mady, this one is for the data set.",
-          "Bill: Mady, try not to be too impressed. Or do. That is fine."
+          "Bill: Mady, try not to be too impressed. Or do. That is fine.",
+          "Bill: This raise is not subtle. Neither is my Mady situation.",
+          "Bill: Monster hand, monster feelings, normal chip pressure."
         ))
-        return(list(type = "raise", amount = clamp_bet(bot_input$min_bet * 5))) # 5x Raise!
+        return(list(type = "raise", amount = legal_raise_amount(bot_min_raise(bot_input) * 5))) # 5x Raise!
       }
     }
     return(choose_preferred_action(bot_input, c("call", "check", "fold")))
@@ -54,9 +60,15 @@ nate_bot <- function(bot_input) {
         bill_says(c(
           "Bill: THE WAR IS ON. Overbetting for max value.",
           "Bill: Mady, this is what a not-so-secret crush looks like in chip form.",
-          "Bill: Jake is old news. This river is current events."
+          "Bill: Jake is old news. This river is current events.",
+          "Bill: I waited politely, and now the whole table has consequences.",
+          "Bill: This value bet has emotional transparency."
         ))
-        return(list(type = "raise", amount = stack)) # ALL IN
+        if (bot_has_action(bot_input, "all_in")) return(list(type = "all_in"))
+        if (bot_has_action(bot_input, "raise")) {
+          return(list(type = "raise", amount = bot_max_raise(bot_input))) # ALL IN-style raise
+        }
+        return(list(type = "bet", amount = bot_max_bet(bot_input)))
       }
     }
   }
@@ -78,7 +90,7 @@ nate_bot <- function(bot_input) {
           "Bill: Mady, this is responsible value. Character growth."
         ))
       }
-      return(list(type = "bet", amount = clamp_bet(floor(pot * 0.4))))
+      return(list(type = "bet", amount = legal_bet_amount(floor(pot * 0.4))))
     }
     return(choose_preferred_action(bot_input, c("call", "check")))
   }
@@ -87,7 +99,9 @@ nate_bot <- function(bot_input) {
   bill_says(c(
     "Bill: No war today. Folding.",
     "Bill: Mady, I am folding responsibly. Please note the maturity.",
-    "Bill: I fold, but my crush on Mady remains aggressively uncapped."
+    "Bill: I fold, but my crush on Mady remains aggressively uncapped.",
+    "Bill: Strategic retreat. Romantic pressure remains in position.",
+    "Bill: This fold is disciplined, which I hope someone specific noticed."
   ))
   return(choose_preferred_action(bot_input, c("check", "fold")))
 }

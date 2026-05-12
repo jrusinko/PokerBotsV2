@@ -36,6 +36,12 @@
 # normalize missing/malformed amounts for `bet`/`raise` to the minimum legal
 # amount.
 
+if (!exists("%||%", mode = "function")) {
+  `%||%` <- function(x, y) {
+    if (is.null(x)) y else x
+  }
+}
+
 new_bot_action <- function(type, amount = NULL) {
   if (!is.character(type) || length(type) != 1 || is.na(type) || !nzchar(type)) {
     stop("`type` must be a nonempty character string.")
@@ -51,6 +57,114 @@ new_bot_action <- function(type, amount = NULL) {
   }
 
   out
+}
+
+bot_chatter_probability <- function() {
+  getOption("pokerbots.chatter_probability", 0.10)
+}
+
+bot_social_chatter_probability <- function() {
+  getOption("pokerbots.social_chatter_probability", 0.15)
+}
+
+bot_chatter_usage_env <- new.env(parent = emptyenv())
+
+reset_bot_chatter_usage <- function() {
+  rm(list = ls(bot_chatter_usage_env, all.names = TRUE), envir = bot_chatter_usage_env)
+  invisible(NULL)
+}
+
+bot_chatter_quote_allowed <- function(line, max_uses = getOption("pokerbots.max_chatter_quote_uses", 3L)) {
+  line <- trimws(paste(as.character(line %||% ""), collapse = " "))
+  if (!nzchar(line)) {
+    return(FALSE)
+  }
+
+  max_uses <- as.integer(max_uses)
+  if (length(max_uses) != 1L || is.na(max_uses) || max_uses < 1L) {
+    max_uses <- 3L
+  }
+
+  key <- line
+  current_count <- bot_chatter_usage_env[[key]] %||% 0L
+  current_count <- as.integer(current_count)
+
+  if (current_count >= max_uses) {
+    return(FALSE)
+  }
+
+  bot_chatter_usage_env[[key]] <- current_count + 1L
+  TRUE
+}
+
+bot_choose_chatter_line <- function(lines, bot_input = NULL) {
+  lines <- as.character(lines)
+  lines <- lines[nzchar(trimws(lines))]
+  if (length(lines) == 0) {
+    return("")
+  }
+
+  public_players <- if (is.list(bot_input)) bot_input$public_players else list()
+  if (!is.list(public_players) || length(public_players) == 0) {
+    return(sample(lines, size = 1))
+  }
+
+  table_names <- tolower(vapply(public_players, function(p) {
+    paste(
+      as.character(p$player_name %||% ""),
+      as.character(p$name %||% ""),
+      as.character(p$bot_name %||% "")
+    )
+  }, character(1)))
+
+  social_names <- c("mady", "nate", "lucy", "joel", "tara", "jaymon", "siena", "maurice", "hawkins")
+  present <- social_names[vapply(social_names, function(nm) any(grepl(nm, table_names, fixed = TRUE)), logical(1))]
+  if (length(present) == 0) {
+    return(sample(lines, size = 1))
+  }
+
+  social_idx <- vapply(
+    lines,
+    function(line) any(grepl(paste(present, collapse = "|"), tolower(line))),
+    logical(1)
+  )
+  if (!any(social_idx)) {
+    return(sample(lines, size = 1))
+  }
+
+  sample(c(lines, rep(lines[social_idx], 4)), size = 1)
+}
+
+bot_maybe_say <- function(lines, bot_input = NULL, chance = NULL) {
+  if (is.null(chance)) {
+    chance <- bot_chatter_probability()
+  } else {
+    chance <- bot_chatter_probability()
+  }
+
+  public_players <- if (is.list(bot_input)) bot_input$public_players else list()
+  if (is.list(public_players) && length(public_players) > 0) {
+    table_names <- tolower(vapply(public_players, function(p) {
+      paste(
+        as.character(p$player_name %||% ""),
+        as.character(p$name %||% ""),
+        as.character(p$bot_name %||% "")
+      )
+    }, character(1)))
+    social_names <- c("mady", "nate", "lucy", "joel", "tara", "jaymon", "siena", "maurice", "hawkins")
+    present <- social_names[vapply(social_names, function(nm) any(grepl(nm, table_names, fixed = TRUE)), logical(1))]
+    if (length(present) > 0 && any(grepl(paste(present, collapse = "|"), tolower(paste(lines, collapse = " "))))) {
+      chance <- max(chance, bot_social_chatter_probability())
+    }
+  }
+
+  if (runif(1) < chance) {
+    line <- bot_choose_chatter_line(lines, bot_input)
+    if (bot_chatter_quote_allowed(line)) {
+      cat(line, "\n")
+    }
+  }
+  invisible(NULL)
 }
 
 # Bot helper functions for student/example bots (canonical location)
@@ -79,6 +193,21 @@ bot_min_raise <- function(bot_input) {
 bot_max_raise <- function(bot_input) {
   if (!bot_has_action(bot_input, "raise")) return(NULL)
   bot_input$legal_actions$actions$raise$max_amount
+}
+
+bot_call_amount <- function(bot_input) {
+  current_bet <- as.numeric(bot_input$current_bet %||% 0)
+  committed <- as.numeric(bot_input$committed_this_round %||% 0)
+  max(0, current_bet - committed)
+}
+
+pot_odds <- function(call_amount, pot_before_call) {
+  call_amount <- as.numeric(call_amount %||% 0)
+  pot_before_call <- as.numeric(pot_before_call %||% 0)
+  if (!is.finite(call_amount) || !is.finite(pot_before_call) || call_amount <= 0) {
+    return(0)
+  }
+  call_amount / (pot_before_call + call_amount)
 }
 
 choose_preferred_action <- function(bot_input, preferences = c("check", "call", "fold")) {

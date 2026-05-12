@@ -68,7 +68,7 @@ compute_total_pot_awarded <- function(hand) {
   total
 }
 
-compute_stack_change_impact <- function(hand, major_stack_change_pct = 0.25) {
+compute_stack_change_impact <- function(hand, major_stack_change_pct = 0.30) {
   deltas <- hand$stack_deltas %||% list()
 
   if (length(deltas) == 0) {
@@ -307,7 +307,7 @@ estimate_low_equity_winner <- function(hand,
 extract_hand_features <- function(replay, hand_index,
                                   short_stack_bb = 10,
                                   double_up_factor = 2,
-                                  major_stack_change_pct = 0.25,
+                                  major_stack_change_pct = 0.30,
                                   strong_hand_category_min = 4L,
                                   equity_sims = 2000,
                                   low_equity_threshold = 0.35,
@@ -602,14 +602,27 @@ annotate_replay_for_tv <- function(replay,
     ranked$had_major_stack_change %||% rep(FALSE, nrow(ranked)),
     as.character(ranked$hand_index)
   )
+  elimination_by_hand <- setNames(
+    ranked$had_elimination %||% rep(FALSE, nrow(ranked)),
+    as.character(ranked$hand_index)
+  )
 
   for (i in seq_along(replay$hand_log)) {
     replay$hand_log[[i]]$interest_score <- as.numeric(score_by_hand[as.character(i)] %||% NA_real_)
     replay$hand_log[[i]]$interest_reasons <- as.character(reasons_by_hand[as.character(i)] %||% "")
     replay$hand_log[[i]]$had_major_stack_change <- isTRUE(major_stack_change_by_hand[as.character(i)])
+    replay$hand_log[[i]]$had_elimination <- isTRUE(elimination_by_hand[as.character(i)])
     replay$hand_log[[i]]$for_tv <- is.finite(replay$hand_log[[i]]$interest_score) &&
       replay$hand_log[[i]]$interest_score >= tv_threshold &&
-      (!isTRUE(require_major_stack_change) || isTRUE(replay$hand_log[[i]]$had_major_stack_change))
+      (
+        isTRUE(replay$hand_log[[i]]$had_elimination) ||
+          !isTRUE(require_major_stack_change) ||
+          isTRUE(replay$hand_log[[i]]$had_major_stack_change)
+      )
+    if (isTRUE(replay$hand_log[[i]]$for_tv) &&
+        length(replay$hand_log[[i]]$action_history %||% list()) > 0) {
+      replay$hand_log[[i]]$broadcast_action_history <- replay$hand_log[[i]]$action_history
+    }
   }
 
   replay

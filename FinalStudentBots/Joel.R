@@ -1,7 +1,8 @@
-source("poker_math.R")
-source("quant_tools.R")
-source("equity_tools.R")
-source("bot_api.R")
+for (helper_file in c("poker_math.R", "quant_tools.R", "equity_tools.R", "bot_api.R")) {
+  if (file.exists(helper_file)) {
+    source(helper_file)
+  }
+}
 
 joel_bot <- function(bot_input) {
 
@@ -10,9 +11,7 @@ joel_bot <- function(bot_input) {
   call_amount <- bot_call_amount(bot_input)
 
   joel_says <- function(lines, chance = 0.18) {
-    if (runif(1) < chance) {
-      cat(sample(lines, size = 1), "\n")
-    }
+    bot_maybe_say(lines, bot_input, chance)
   }
 
 
@@ -46,7 +45,11 @@ joel_bot <- function(bot_input) {
       "Joel: I have seen teams win three of four title games. Still processing.",
       "Joel: Coach says get pucks deep. Poker bot says raise small.",
       "Joel: If Lucy asks, this is statistically responsible hockey.",
-      "Joel: I am not trying to impress Lucy. The model just looks impressive."
+      "Joel: I am not trying to impress Lucy. The model just looks impressive.",
+      "Joel: Dry analytics update: this hand is less bad than attendance.",
+      "Joel: I care about everyone here, but mostly about pot odds.",
+      "Joel: Lucy would call this supportive aggression, probably.",
+      "Joel: Three out of four titles still hurts. This pot can help."
     ))
     if (bot_has_action(bot_input, "raise")) {
       return(list(type = "raise", amount = bot_min_raise(bot_input)))
@@ -65,7 +68,9 @@ joel_bot <- function(bot_input) {
         "Joel: Free look. Even I might attend this one.",
         "Joel: No cost, no complaint. Rare classroom energy.",
         "Joel: I will check and call it player development.",
-        "Joel: I am checking calmly, which is definitely not because Lucy is nearby."
+        "Joel: I am checking calmly, which is definitely not because Lucy is nearby.",
+        "Joel: No pressure. Like office hours, but with fewer witnesses.",
+        "Joel: Lucy is not affecting this check. Extremely normal behavior."
       ), chance = 0.14)
       return(list(type = "check"))
     }
@@ -128,10 +133,12 @@ joel_bot <- function(bot_input) {
 
     # Otherwise fold
     joel_says(c(
-      "Joel: Folding is just load management.",
-      "Joel: I will be absent from this pot. Consistent brand.",
-      "Joel: Caring deeply means letting this hand go.",
-      "Joel: Lucy, please do not grade this fold too harshly."
+    "Joel: Folding is just load management.",
+    "Joel: I will be absent from this pot. Consistent brand.",
+    "Joel: Caring deeply means letting this hand go.",
+    "Joel: Lucy, please do not grade this fold too harshly.",
+    "Joel: This fold has strong assistant-coach energy.",
+    "Joel: I am saving my chips and my emotional availability."
     ), chance = 0.16)
     return(list(type = "fold"))
 }
@@ -149,7 +156,9 @@ joel_bot <- function(bot_input) {
   joel_says(c(
     "Joel: Not enough expected value, and frankly not enough coffee.",
     "Joel: Fold. We will review film later.",
-    "Joel: This one can transfer to the discard pile."
+    "Joel: This one can transfer to the discard pile.",
+    "Joel: Attendance optional, folding mandatory.",
+    "Joel: The model says no, gently."
   ), chance = 0.16)
   return(list(type = "fold"))
 }
