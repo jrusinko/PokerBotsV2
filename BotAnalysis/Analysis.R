@@ -954,29 +954,80 @@ FeatureBotFunctions<-list(
   lab_bot_v2 = lab_bot_v2
 )
 FeatureBotNames<-names(FeatureBotFunctions)
+FeatureBotAliases<-c(
+  "Siena" = "Siena_bot",
+  "Mehdi" = "mehdi_bot",
+  "Nate" = "nate_bot",
+  "Ruth" = "ruth_bot",
+  "Mady" = "mady_bot",
+  "Lucy" = "lucy_bot",
+  "Jaymon" = "jaymon_bot",
+  "Tara" = "tara_bot",
+  "Joel" = "joel_bot",
+  "Nikola" = "Nikola_bot",
+  "King Rikki" = "king_bot",
+  "Hatch Bot" = "hatch_bot",
+  "Gearan up to beat you" = "gearan_bot",
+  "Sir Hu McBluff" = "hu_bot",
+  "Talmage Bot" = "talmage_bot",
+  "Bot inSpector" = "spector_bot",
+  "Khan you fold?" = "khan_bot",
+  "Fordeing Ahead" = "forde_bot",
+  "Maurice Hawkins" = "hawkins_bot",
+  "Biermann" = "biermann_bot",
+  "Rando" = "random_bot",
+  "Aggro" = "aggressive_bot",
+  "PrePlanner" = "simple_preflop_strength_bot",
+  "GetAlong" = "always_call_bot",
+  "Da streets" = "strength_by_street_bot",
+  "ScardyBot" = "passive_bot",
+  "Confused" = "mixed_bot",
+  "MoreConfused" = "mixed_bot2",
+  "LabBot" = "lab_bot",
+  "LabBot2" = "lab_bot_v2"
+)
+
+feature_bot_row_name<-function(player_name,valid_names = FeatureBotNames) {
+  player_name<-as.character(player_name %||% "")
+  if (!nzchar(player_name)) {
+    return(NA_character_)
+  }
+  if (player_name %in% valid_names) {
+    return(player_name)
+  }
+  alias<-if (player_name %in% names(FeatureBotAliases)) FeatureBotAliases[[player_name]] else NA_character_
+  if (!is.na(alias) && alias %in% valid_names) {
+    return(alias)
+  }
+  NA_character_
+}
 
 FeatureNames<-c("VPIP","PFR","Aggretion_ratio","all_in_rate","showdown_rate","tournaments Played")
-BotFeatureCounts<-matrix(
-  0,
-  nrow = length(FeatureBotNames),
-  ncol = 11,
-  dimnames = list(
-    FeatureBotNames,
-    c(
-      "hands",
-      "vpip_hands",
-      "pfr_hands",
-      "aggressive_actions",
-      "call_actions",
-      "all_in_hands",
-      "showdown_hands",
-      "tournaments Played",
-      "VPIP",
-      "PFR",
-      "Aggretion_ratio"
+new_bot_feature_counts<-function(bot_names = FeatureBotNames) {
+  matrix(
+    0,
+    nrow = length(bot_names),
+    ncol = 11,
+    dimnames = list(
+      bot_names,
+      c(
+        "hands",
+        "vpip_hands",
+        "pfr_hands",
+        "aggressive_actions",
+        "call_actions",
+        "all_in_hands",
+        "showdown_hands",
+        "tournaments Played",
+        "VPIP",
+        "PFR",
+        "Aggretion_ratio"
+      )
     )
   )
-)
+}
+
+BotFeatureCounts<-new_bot_feature_counts()
 
 BotFeatures<-matrix(
   0,
@@ -998,23 +1049,44 @@ normalize_tournament_state<-function(tourn) {
 hand_starting_players<-function(hand) {
   starters<-hand$starting_stack_summary %||% hand$player_start_summary %||% list()
   if (!is.list(starters)) {
-    return(data.frame(player_id = character(0),player_name = character(0),stringsAsFactors = FALSE))
+    return(data.frame(
+      player_id = character(0),
+      player_name = character(0),
+      stack = numeric(0),
+      status = character(0),
+      stringsAsFactors = FALSE
+    ))
   }
 
   rows<-lapply(starters,function(p) {
     data.frame(
       player_id = as.character(p$player_id %||% ""),
       player_name = as.character(p$player_name %||% p$name %||% p$player_id %||% ""),
+      stack = as.numeric(p$stack %||% 0),
+      status = as.character(p$status %||% ""),
       stringsAsFactors = FALSE
     )
   })
 
   if (length(rows) == 0) {
-    return(data.frame(player_id = character(0),player_name = character(0),stringsAsFactors = FALSE))
+    return(data.frame(
+      player_id = character(0),
+      player_name = character(0),
+      stack = numeric(0),
+      status = character(0),
+      stringsAsFactors = FALSE
+    ))
   }
 
   out<-do.call(rbind,rows)
-  out[nzchar(out$player_name),,drop = FALSE]
+  out$stack[is.na(out$stack)]<-0
+  out[nzchar(out$player_name) & identical_or_empty_active(out$status) & out$stack > 0,,drop = FALSE]
+}
+
+identical_or_empty_active<-function(status) {
+  status<-tolower(trimws(as.character(status %||% "")))
+  status[is.na(status)]<-""
+  status == "" | status == "active"
 }
 
 hand_showdown_player_ids<-function(hand) {
@@ -1029,8 +1101,14 @@ update_bot_features_from_tournament<-function(tourn,bot_feature_counts = BotFeat
   hand_log<-tourn$hand_log %||% list()
 
   table_names<-vapply(tourn$players,function(p) as.character(p$name %||% p$player_name %||% p$player_id %||% ""),character(1))
-  table_names<-intersect(table_names,rownames(bot_feature_counts))
+  table_names<-vapply(table_names,feature_bot_row_name,character(1),valid_names = rownames(bot_feature_counts))
+  table_names<-unique(intersect(table_names[!is.na(table_names) & nzchar(table_names)],rownames(bot_feature_counts)))
   bot_feature_counts[table_names,"tournaments Played"]<-bot_feature_counts[table_names,"tournaments Played"] + 1
+
+  tournament_player_ids<-vapply(tourn$players,function(p) as.character(p$player_id %||% ""),character(1))
+  tournament_player_names<-vapply(tourn$players,function(p) as.character(p$name %||% p$player_name %||% p$player_id %||% ""),character(1))
+  tournament_feature_names<-vapply(tournament_player_names,feature_bot_row_name,character(1),valid_names = rownames(bot_feature_counts))
+  tournament_id_to_feature_name<-setNames(tournament_feature_names,tournament_player_ids)
 
   for (hand in hand_log) {
     starters<-hand_starting_players(hand)
@@ -1038,7 +1116,13 @@ update_bot_features_from_tournament<-function(tourn,bot_feature_counts = BotFeat
       next
     }
 
-    starter_names<-intersect(starters$player_name,rownames(bot_feature_counts))
+    starters$feature_name<-ifelse(
+      starters$player_id %in% names(tournament_id_to_feature_name),
+      tournament_id_to_feature_name[starters$player_id],
+      vapply(starters$player_name,feature_bot_row_name,character(1),valid_names = rownames(bot_feature_counts))
+    )
+    starter_names<-intersect(starters$feature_name[!is.na(starters$feature_name) & nzchar(starters$feature_name)],rownames(bot_feature_counts))
+    player_id_to_feature_name<-setNames(starters$feature_name,starters$player_id)
     bot_feature_counts[starter_names,"hands"]<-bot_feature_counts[starter_names,"hands"] + 1
 
     action_history<-hand$action_history %||% list()
@@ -1049,20 +1133,29 @@ update_bot_features_from_tournament<-function(tourn,bot_feature_counts = BotFeat
     call_count<-setNames(numeric(0),character(0))
 
     for (a in action_history) {
-      player_name<-as.character(a$player_name %||% "")
-      if (!nzchar(player_name) || !(player_name %in% rownames(bot_feature_counts))) {
+      player_id<-as.character(a$player_id %||% "")
+      player_name<-if (nzchar(player_id) && player_id %in% names(player_id_to_feature_name)) {
+        player_id_to_feature_name[[player_id]]
+      } else if (nzchar(player_id) && player_id %in% names(tournament_id_to_feature_name)) {
+        tournament_id_to_feature_name[[player_id]]
+      } else {
+        feature_bot_row_name(a$player_name %||% "",valid_names = rownames(bot_feature_counts))
+      }
+
+      if (is.na(player_name) || !nzchar(player_name) || !(player_name %in% rownames(bot_feature_counts))) {
         next
       }
 
-      action_type<-as.character(a$type %||% "")
-      action_street<-as.character(a$street %||% "")
+      action_type<-tolower(trimws(as.character(a$type %||% "")))
+      action_street<-tolower(trimws(as.character(a$street %||% "")))
+      is_preflop_action<-identical(action_street,"preflop")
 
-      if (identical(action_street,"preflop") &&
+      if (is_preflop_action &&
           action_type %in% c("call","bet","raise","all_in","all_in_call","all_in_bet","all_in_raise","all_in_short")) {
         voluntary_by_player[[player_name]]<-TRUE
       }
-      if (identical(action_street,"preflop") &&
-          action_type %in% c("raise","all_in_bet","all_in_raise")) {
+      if (is_preflop_action &&
+          (action_type %in% c("bet","raise") || grepl("all_in",action_type,fixed = TRUE))) {
         pfr_by_player[[player_name]]<-TRUE
       }
       if (grepl("all_in",action_type,fixed = TRUE)) {
@@ -1082,7 +1175,7 @@ update_bot_features_from_tournament<-function(tourn,bot_feature_counts = BotFeat
     pfr_names<-intersect(names(pfr_by_player),rownames(bot_feature_counts))
     all_in_names<-intersect(names(all_in_by_player),rownames(bot_feature_counts))
     showdown_ids<-hand_showdown_player_ids(hand)
-    showdown_names<-intersect(starters$player_name[starters$player_id %in% showdown_ids],rownames(bot_feature_counts))
+    showdown_names<-intersect(starters$feature_name[starters$player_id %in% showdown_ids],rownames(bot_feature_counts))
 
     bot_feature_counts[vpip_names,"vpip_hands"]<-bot_feature_counts[vpip_names,"vpip_hands"] + 1
     bot_feature_counts[pfr_names,"pfr_hands"]<-bot_feature_counts[pfr_names,"pfr_hands"] + 1
@@ -1113,7 +1206,7 @@ compute_bot_features<-function(bot_feature_counts = BotFeatureCounts) {
 
   out[,"VPIP"]<-ifelse(hands > 0,bot_feature_counts[,"vpip_hands"] / hands,NA_real_)
   out[,"PFR"]<-ifelse(hands > 0,bot_feature_counts[,"pfr_hands"] / hands,NA_real_)
-  out[,"Aggretion_ratio"]<-ifelse(calls > 0,bot_feature_counts[,"aggressive_actions"] / calls,NA_real_)
+  out[,"Aggretion_ratio"]<-bot_feature_counts[,"aggressive_actions"] / (calls + 1)
   out[,"all_in_rate"]<-ifelse(hands > 0,bot_feature_counts[,"all_in_hands"] / hands,NA_real_)
   out[,"showdown_rate"]<-ifelse(hands > 0,bot_feature_counts[,"showdown_hands"] / hands,NA_real_)
   out[,"tournaments Played"]<-bot_feature_counts[,"tournaments Played"]
@@ -1121,23 +1214,96 @@ compute_bot_features<-function(bot_feature_counts = BotFeatureCounts) {
   out
 }
 
+bot_preflop_actions<-function(tourn,bot_name = "Siena_bot") {
+  tourn<-normalize_tournament_state(tourn)
+  rows<-list()
+
+  tournament_player_ids<-vapply(tourn$players,function(p) as.character(p$player_id %||% ""),character(1))
+  tournament_player_names<-vapply(tourn$players,function(p) as.character(p$name %||% p$player_name %||% p$player_id %||% ""),character(1))
+  tournament_feature_names<-vapply(tournament_player_names,feature_bot_row_name,character(1),valid_names = FeatureBotNames)
+  tournament_id_to_feature_name<-setNames(tournament_feature_names,tournament_player_ids)
+
+  for (hand in tourn$hand_log %||% list()) {
+    starters<-hand_starting_players(hand)
+    if (nrow(starters) == 0) {
+      next
+    }
+
+    starters$feature_name<-ifelse(
+      starters$player_id %in% names(tournament_id_to_feature_name),
+      tournament_id_to_feature_name[starters$player_id],
+      vapply(starters$player_name,feature_bot_row_name,character(1),valid_names = FeatureBotNames)
+    )
+    player_id_to_feature_name<-setNames(starters$feature_name,starters$player_id)
+
+    for (a in hand$action_history %||% list()) {
+      action_street<-tolower(trimws(as.character(a$street %||% "")))
+      if (!identical(action_street,"preflop")) {
+        next
+      }
+
+      player_id<-as.character(a$player_id %||% "")
+      feature_name<-if (nzchar(player_id) && player_id %in% names(player_id_to_feature_name)) {
+        player_id_to_feature_name[[player_id]]
+      } else if (nzchar(player_id) && player_id %in% names(tournament_id_to_feature_name)) {
+        tournament_id_to_feature_name[[player_id]]
+      } else {
+        feature_bot_row_name(a$player_name %||% "",valid_names = FeatureBotNames)
+      }
+
+      if (is.na(feature_name) || !identical(feature_name,bot_name)) {
+        next
+      }
+
+      rows[[length(rows) + 1L]]<-data.frame(
+        hand_number = hand$hand_number %||% NA_integer_,
+        player_id = player_id,
+        player_name = as.character(a$player_name %||% ""),
+        feature_name = feature_name,
+        type = as.character(a$type %||% ""),
+        amount = as.numeric(a$amount %||% 0),
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+
+  if (length(rows) == 0) {
+    return(data.frame(
+      hand_number = integer(0),
+      player_id = character(0),
+      player_name = character(0),
+      feature_name = character(0),
+      type = character(0),
+      amount = numeric(0),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  do.call(rbind,rows)
+}
+
 run_bot_feature_simulations<-function(
     n,
-    bot_feature_counts = BotFeatureCounts,
+    bot_feature_counts = NULL,
     bot_fns = FeatureBotFunctions,
     bot_names = FeatureBotNames,
     table_size = 10L,
     blind_schedule = blinds_Main,
     max_hands = 2000,
-    starting_stack = 20000,
+    starting_stack = 1000,
     stop_at_players = 1L,
-    verbose = FALSE
+    verbose = FALSE,
+    reset = TRUE
 ) {
   if (!is.numeric(n) || length(n) != 1 || is.na(n) || n < 1) {
     stop("`n` must be a positive integer.")
   }
 
   n<-as.integer(n)
+  if (isTRUE(reset) || is.null(bot_feature_counts)) {
+    bot_feature_counts<-new_bot_feature_counts(bot_names)
+  }
+
   tournament_results<-vector("list",n)
 
   for (i in seq_len(n)) {
@@ -1178,6 +1344,7 @@ Table1<-sample(Index,10)
 Index<-setdiff(Index,Table1)
 Table2<-sample(Index,10)
 Table3<-setdiff(Index,Table2)
+
 
 # RUn Tournament ----------------------------------------------------------
 
@@ -1293,7 +1460,7 @@ run_viewer_app(tournFinal)
 
 
 # bot feature Sim ---------------------------------------------------------
-results <- run_bot_feature_simulations(60)
+results <- run_bot_feature_simulations(10)
 BotFeatures
 
 
